@@ -68,20 +68,20 @@ export function SiteHeader() {
                     <DropdownMenuLabel className="truncate">{user.email}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                      <Link to="/dashboard" className="cursor-pointer">
+                      <a href="/dashboard" className="cursor-pointer flex items-center">
                         <LayoutDashboard className="w-4 h-4 mr-2" /> Dashboard
-                      </Link>
+                      </a>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <Link to="/wallet" className="cursor-pointer">
+                      <a href="/wallet" className="cursor-pointer flex items-center">
                         <Wallet className="w-4 h-4 mr-2" /> Wallet
-                      </Link>
+                      </a>
                     </DropdownMenuItem>
                     {isAdmin && (
                       <DropdownMenuItem asChild>
-                        <Link to="/admin" className="cursor-pointer">
+                        <a href="/admin" className="cursor-pointer flex items-center">
                           <LayoutGrid className="w-4 h-4 mr-2" /> Admin
-                        </Link>
+                        </a>
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
