@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Facebook, Instagram, Twitter, Youtube, Wrench, Loader2, ShoppingCart, X } from "lucide-react";
+import { ArrowRight, Facebook, Instagram, Twitter, Youtube, Wrench, Loader2, ShoppingCart, X, Copy, CheckCheck, PackageCheck, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { PageHero } from "@/components/sections/PageHero";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { assignCredentialToOrder } from "@/lib/api/delivery";
 
 const searchSchema = z.object({ cat: z.string().optional() });
 
@@ -20,9 +21,7 @@ export const Route = createFileRoute("/products")({
   head: () => ({
     meta: [
       { title: "Products — Sammy Store Logs" },
-      { name: "description", content: "Browse verified social media account categories: Aged Twitter, Instagram, Facebook, Tools and more." },
-      { property: "og:title", content: "Our Products" },
-      { property: "og:description", content: "Verified accounts across all major social media platforms." },
+      { name: "description", content: "Browse verified social media account categories." },
     ],
   }),
   component: ProductsPage,
@@ -30,16 +29,11 @@ export const Route = createFileRoute("/products")({
 
 type DbCategory = { id: string; name: string; slug: string; description: string | null };
 type Product = { id: string; title: string; price: number; stock: number; description: string | null; image_url: string | null; slug: string; currency: string };
+type DeliveredCred = { content: string; label: string | null };
 
 const platformIcons: Record<string, React.ElementType> = {
-  "aged-twitter": Twitter,
-  "aged-instagram": Instagram,
-  "random-facebook": Facebook,
-  "usa-facebook": Facebook,
-  tools: Wrench,
-  "working-profiles": Instagram,
-  "below-50-friend": Facebook,
-  youtube: Youtube,
+  "aged-twitter": Twitter, "aged-instagram": Instagram, "random-facebook": Facebook,
+  "usa-facebook": Facebook, tools: Wrench, "working-profiles": Instagram, "below-50-friend": Facebook, youtube: Youtube,
 };
 
 function ProductsPage() {
@@ -52,34 +46,33 @@ function ProductsPage() {
   const [buyTarget, setBuyTarget] = useState<Product | null>(null);
   const [buying, setBuying] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [deliveredCred, setDeliveredCred] = useState<DeliveredCred | null>(null);
+  const [purchaseOrderId, setPurchaseOrderId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const activeCat = search.cat;
   const activeCategory = dbCategories.find((c) => c.slug === activeCat);
 
-  // Fetch categories
   useEffect(() => {
     supabase.from("product_categories").select("*").order("name").then(({ data }) => {
       if (data?.length) setDbCategories(data as DbCategory[]);
     });
   }, []);
 
-  // Fetch products when category changes
   useEffect(() => {
     if (!activeCat) { setProducts([]); return; }
     setProductsLoading(true);
+    const catId = dbCategories.find((c) => c.slug === activeCat)?.id ?? "";
+    if (!catId) { setProductsLoading(false); return; }
     supabase
       .from("products")
       .select("id, title, price, stock, description, image_url, slug, currency")
       .eq("published", true)
-      .eq("category_id", dbCategories.find((c) => c.slug === activeCat)?.id ?? "")
+      .eq("category_id", catId)
       .order("price")
-      .then(({ data }) => {
-        setProducts((data as Product[]) ?? []);
-        setProductsLoading(false);
-      });
+      .then(({ data }) => { setProducts((data as Product[]) ?? []); setProductsLoading(false); });
   }, [activeCat, dbCategories]);
 
-  // Fetch wallet balance for purchase check
   useEffect(() => {
     if (!user) return;
     supabase.from("wallets").select("balance").eq("user_id", user.id).single().then(({ data }) => {
@@ -87,43 +80,75 @@ function ProductsPage() {
     });
   }, [user]);
 
-  const displayCategories = dbCategories.length > 0 ? dbCategories : staticCategories.map((c) => ({ id: String(c.id), name: c.name, slug: c.slug, description: null }));
+  const displayCategories = dbCategories.length > 0
+    ? dbCategories
+    : staticCategories.map((c) => ({ id: String(c.id), name: c.name, slug: c.slug, description: null }));
+
+  const refreshProducts = () => {
+    const catId = dbCategories.find((c) => c.slug === activeCat)?.id;
+    if (!catId) return;
+    supabase.from("products").select("id, title, price, stock, description, image_url, slug, currency")
+      .eq("published", true).eq("category_id", catId).order("price")
+      .then(({ data }) => setProducts((data as Product[]) ?? []));
+  };
 
   const handleBuy = async () => {
-    if (!buyTarget) return;
-    if (!user) { navigate({ to: "/auth", search: { redirect: "/products" } }); return; }
+    if (!buyTarget || !user) return;
     if (walletBalance === null) return toast.error("Wallet not found");
     if (walletBalance < buyTarget.price) {
-      toast.error(`Insufficient balance. You need ₦${buyTarget.price.toLocaleString()} but have ₦${walletBalance.toLocaleString()}.`);
+      toast.error(`Insufficient balance — need ₦${buyTarget.price.toLocaleString()}, have ₦${walletBalance.toLocaleString()}`);
       return;
     }
 
     setBuying(true);
-    const { error } = await supabase.rpc("purchase_with_wallet" as never, {
-      _user_id: user.id,
-      _product_id: buyTarget.id,
-      _quantity: 1,
+    const { data: orderId, error } = await supabase.rpc("purchase_with_wallet" as never, {
+      _user_id: user.id, _product_id: buyTarget.id, _quantity: 1,
     } as never);
-    setBuying(false);
 
     if (error) {
+      setBuying(false);
       if (error.message.includes("insufficient")) toast.error("Insufficient wallet balance");
       else if (error.message.includes("stock")) toast.error("Out of stock");
       else toast.error(error.message);
-    } else {
-      toast.success(`Purchase successful! Check your dashboard for order details.`);
-      setBuyTarget(null);
-      // Refresh wallet balance
-      supabase.from("wallets").select("balance").eq("user_id", user.id).single().then(({ data }) => {
-        if (data) setWalletBalance(Number(data.balance));
-      });
-      // Refresh products stock
-      if (activeCat) {
-        supabase.from("products").select("id, title, price, stock, description, image_url, slug, currency").eq("published", true).eq("category_id", dbCategories.find((c) => c.slug === activeCat)?.id ?? "").order("price").then(({ data }) => {
-          setProducts((data as Product[]) ?? []);
-        });
-      }
+      return;
     }
+
+    // Refresh wallet balance
+    supabase.from("wallets").select("balance").eq("user_id", user.id).single()
+      .then(({ data }) => { if (data) setWalletBalance(Number(data.balance)); });
+    refreshProducts();
+
+    // Assign a credential from the pool
+    try {
+      const delivery = await assignCredentialToOrder({
+        data: { orderId: orderId as string, productId: buyTarget.id },
+      });
+      setBuying(false);
+      setPurchaseOrderId(orderId as string);
+      if (delivery.assigned && delivery.content) {
+        setDeliveredCred({ content: delivery.content, label: delivery.label });
+      } else {
+        setDeliveredCred(null); // pending delivery
+      }
+    } catch {
+      setBuying(false);
+      setPurchaseOrderId(orderId as string);
+      setDeliveredCred(null);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!deliveredCred?.content) return;
+    navigator.clipboard.writeText(deliveredCred.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const closePurchaseResult = () => {
+    setBuyTarget(null);
+    setPurchaseOrderId(null);
+    setDeliveredCred(null);
+    setCopied(false);
   };
 
   return (
@@ -137,22 +162,16 @@ function ProductsPage() {
             <p className="text-muted-foreground max-w-2xl mx-auto">A wide range of verified social media accounts ready for immediate transfer.</p>
           </motion.div>
 
-          {/* Category Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 mb-12">
             {displayCategories.map((category, index) => {
               const Icon = platformIcons[category.slug] ?? Facebook;
               const isActive = activeCat === category.slug;
               return (
-                <motion.button
-                  key={category.id}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.45, delay: index * 0.08 }}
-                  whileHover={{ y: -4 }}
+                <motion.button key={category.id}
+                  initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+                  transition={{ duration: 0.45, delay: index * 0.08 }} whileHover={{ y: -4 }}
                   onClick={() => navigate({ to: "/products", search: { cat: isActive ? undefined : category.slug } })}
-                  className={`group text-left bg-card rounded-2xl p-6 shadow-sm hover:shadow-lg transition-all border ${isActive ? "border-brand-orange ring-2 ring-brand-orange/30" : "border-border"}`}
-                >
+                  className={`group text-left bg-card rounded-2xl p-6 shadow-sm hover:shadow-lg transition-all border ${isActive ? "border-brand-orange ring-2 ring-brand-orange/30" : "border-border"}`}>
                   <div className="flex items-start justify-between mb-4">
                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${isActive ? "bg-brand-orange" : "bg-brand-orange/10 group-hover:bg-brand-orange"}`}>
                       <Icon className={`w-6 h-6 transition-colors ${isActive ? "text-white" : "text-brand-orange group-hover:text-white"}`} />
@@ -161,7 +180,7 @@ function ProductsPage() {
                   </div>
                   <h3 className={`text-lg font-semibold mb-2 transition-colors ${isActive ? "text-brand-orange" : "text-brand-navy group-hover:text-brand-orange"}`}>{category.name}</h3>
                   <p className="text-muted-foreground text-sm mb-4">{category.description ?? `Browse verified ${category.name.toLowerCase()} accounts.`}</p>
-                  <div className={`inline-flex items-center gap-2 font-medium text-sm transition-colors ${isActive ? "text-brand-orange" : "text-brand-orange hover:text-brand-orange-hover"}`}>
+                  <div className={`inline-flex items-center gap-2 font-medium text-sm ${isActive ? "text-brand-orange" : "text-brand-orange"}`}>
                     {isActive ? "Viewing products" : "Browse products"}
                     <ArrowRight className={`w-4 h-4 transition-transform ${isActive ? "rotate-90" : "group-hover:translate-x-1"}`} />
                   </div>
@@ -170,7 +189,7 @@ function ProductsPage() {
             })}
           </div>
 
-          {/* Products for selected category */}
+          {/* Products grid for active category */}
           <AnimatePresence>
             {activeCat && (
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }}>
@@ -183,9 +202,7 @@ function ProductsPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     {user && walletBalance !== null && (
-                      <span className="text-sm text-muted-foreground">
-                        Wallet: <span className="font-medium text-brand-navy">₦{walletBalance.toLocaleString()}</span>
-                      </span>
+                      <span className="text-sm text-muted-foreground">Wallet: <span className="font-medium text-brand-navy">₦{walletBalance.toLocaleString()}</span></span>
                     )}
                     <button onClick={() => navigate({ to: "/products", search: {} })} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-brand-navy transition-colors">
                       <X className="w-4 h-4" />Close
@@ -217,7 +234,7 @@ function ProductsPage() {
                             <div className="flex-1">
                               <div className="flex items-start justify-between gap-2 mb-2">
                                 <h4 className="font-semibold text-brand-navy group-hover:text-brand-orange transition-colors text-sm">{p.title}</h4>
-                                <Badge className={p.stock > 0 ? "bg-green-100 text-green-700 shrink-0" : "bg-red-100 text-red-500 shrink-0"}>
+                                <Badge className={p.stock > 0 ? "bg-green-100 text-green-700 shrink-0 text-xs" : "bg-red-100 text-red-500 shrink-0 text-xs"}>
                                   {p.stock > 0 ? `${p.stock} left` : "Sold out"}
                                 </Badge>
                               </div>
@@ -225,15 +242,12 @@ function ProductsPage() {
                             </div>
                             <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
                               <div className="text-lg font-bold text-brand-navy">₦{Number(p.price).toLocaleString()}</div>
-                              <Button
-                                size="sm"
-                                disabled={p.stock === 0}
+                              <Button size="sm" disabled={p.stock === 0}
                                 onClick={() => {
                                   if (!user) { navigate({ to: "/auth", search: { redirect: "/products" } }); return; }
                                   setBuyTarget(p);
                                 }}
-                                className="bg-brand-orange hover:bg-brand-orange-hover text-white text-xs"
-                              >
+                                className="bg-brand-orange hover:bg-brand-orange-hover text-white text-xs">
                                 {p.stock === 0 ? "Out of stock" : "Buy Now"}
                               </Button>
                             </div>
@@ -260,8 +274,8 @@ function ProductsPage() {
         </div>
       </section>
 
-      {/* Purchase Dialog */}
-      <Dialog open={!!buyTarget} onOpenChange={(o) => !o && setBuyTarget(null)}>
+      {/* ── Purchase confirmation dialog ──────────────────────────────── */}
+      <Dialog open={!!buyTarget && !purchaseOrderId} onOpenChange={(o) => { if (!o) { setBuyTarget(null); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Confirm Purchase</DialogTitle></DialogHeader>
           {buyTarget && (
@@ -272,9 +286,7 @@ function ProductsPage() {
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Your wallet balance</span>
-                <span className={`font-medium ${(walletBalance ?? 0) < buyTarget.price ? "text-red-500" : "text-green-600"}`}>
-                  ₦{(walletBalance ?? 0).toLocaleString()}
-                </span>
+                <span className={`font-medium ${(walletBalance ?? 0) < buyTarget.price ? "text-red-500" : "text-green-600"}`}>₦{(walletBalance ?? 0).toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">After purchase</span>
@@ -290,15 +302,66 @@ function ProductsPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setBuyTarget(null)}>Cancel</Button>
-            <Button
-              disabled={buying || (walletBalance ?? 0) < (buyTarget?.price ?? 0)}
-              onClick={handleBuy}
-              className="bg-brand-orange hover:bg-brand-orange-hover text-white"
-            >
-              {buying && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {buying ? "Processing…" : "Confirm Purchase"}
+            <Button disabled={buying || (walletBalance ?? 0) < (buyTarget?.price ?? 0)} onClick={handleBuy} className="bg-brand-orange hover:bg-brand-orange-hover text-white">
+              {buying ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing…</> : "Confirm Purchase"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Purchase result + credential delivery dialog ──────────────── */}
+      <Dialog open={!!purchaseOrderId} onOpenChange={(o) => { if (!o) closePurchaseResult(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <PackageCheck className="w-5 h-5" />
+              Order Confirmed!
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-2 space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Your purchase of <span className="font-medium text-brand-navy">{buyTarget?.title}</span> was successful.
+            </p>
+
+            {deliveredCred ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-brand-navy">
+                  <CheckCheck className="w-4 h-4 text-green-500" />
+                  {deliveredCred.label ?? "Account credentials delivered"}
+                </div>
+                <div className="relative">
+                  <pre className="bg-muted rounded-xl p-4 text-sm font-mono whitespace-pre-wrap break-all leading-relaxed border border-border max-h-48 overflow-y-auto">
+                    {deliveredCred.content}
+                  </pre>
+                  <Button size="sm" variant="ghost" onClick={handleCopy}
+                    className="absolute top-2 right-2 h-7 px-2 text-xs text-muted-foreground hover:text-brand-navy">
+                    {copied ? <><CheckCheck className="w-3.5 h-3.5 mr-1 text-green-500" />Copied!</> : <><Copy className="w-3.5 h-3.5 mr-1" />Copy</>}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-yellow-500" />
+                  Save these credentials now. You can also view them later in your Dashboard → Orders.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
+                <div className="font-medium mb-1 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4" />Delivery pending
+                </div>
+                <p>Your order has been placed. Account credentials will be delivered to your Dashboard within a short time. Our team has been notified.</p>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <Button asChild variant="outline" size="sm" className="flex-1">
+                <Link to="/dashboard" search={{ tab: "orders" } as never}>View in Dashboard</Link>
+              </Button>
+              <Button onClick={closePurchaseResult} size="sm" className="flex-1 bg-brand-orange hover:bg-brand-orange-hover text-white">
+                Continue Shopping
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>
