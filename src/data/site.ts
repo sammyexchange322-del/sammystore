@@ -5,13 +5,20 @@ export interface Category {
 }
 
 export const categories: Category[] = [
-  { id: 1, name: "Aged Twitter", slug: "aged-twitter" },
-  { id: 2, name: "Aged Instagram", slug: "aged-instagram" },
-  { id: 3, name: "Random Facebook", slug: "random-facebook" },
-  { id: 4, name: "USA Facebook", slug: "usa-facebook" },
-  { id: 5, name: "Tools", slug: "tools" },
-  { id: 6, name: "Working Profiles with Picture & Video", slug: "working-profiles" },
-  { id: 7, name: "Below 50 Friend Countries Facebook", slug: "below-50-friend" },
+  { id: 1, name: "TikTok", slug: "tiktok" },
+  { id: 2, name: "Facebook", slug: "facebook" },
+  { id: 3, name: "Instagram", slug: "instagram" },
+  { id: 4, name: "Telegram", slug: "telegram" },
+  { id: 5, name: "YouTube", slug: "youtube" },
+  { id: 6, name: "Twitter / X", slug: "twitter-x" },
+  { id: 7, name: "LinkedIn", slug: "linkedin" },
+  { id: 8, name: "Aged Twitter", slug: "aged-twitter" },
+  { id: 9, name: "Aged Instagram", slug: "aged-instagram" },
+  { id: 10, name: "Random Facebook", slug: "random-facebook" },
+  { id: 11, name: "USA Facebook", slug: "usa-facebook" },
+  { id: 12, name: "Tools", slug: "tools" },
+  { id: 13, name: "Working Profiles with Picture & Video", slug: "working-profiles" },
+  { id: 14, name: "Below 50 Friend Countries Facebook", slug: "below-50-friend" },
 ];
 
 export const navLinks = [

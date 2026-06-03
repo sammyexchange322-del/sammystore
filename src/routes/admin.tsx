@@ -280,13 +280,13 @@ function ProductsTab() {
     if (!productIds.length) return;
     const { data } = await supabase
       .from("product_credentials")
-      .select("product_id, is_delivered")
+      .select("product_id, order_id")
       .in("product_id", productIds);
     const counts: Record<string, { available: number; total: number }> = {};
-    (data ?? []).forEach((row: { product_id: string; is_delivered: boolean }) => {
+    ((data ?? []) as Array<{ product_id: string; order_id: string | null }>).forEach((row) => {
       if (!counts[row.product_id]) counts[row.product_id] = { available: 0, total: 0 };
       counts[row.product_id].total += 1;
-      if (!row.is_delivered) counts[row.product_id].available += 1;
+      if (!row.order_id) counts[row.product_id].available += 1;
     });
     setCredCounts(counts);
   };
@@ -449,7 +449,7 @@ function ProductsTab() {
               </div>
               <div className="col-span-2">
                 <Label>Category</Label>
-                <Select value={form.category_id} onValueChange={(v) => setForm({ ...form, category_id: v })}>
+                <Select value={form.category_id ?? undefined} onValueChange={(v) => setForm({ ...form, category_id: v })}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -534,7 +534,7 @@ function OrdersTab() {
   useEffect(() => { fetchOrders(); }, []);
 
   const updateStatus = async (id: string, status: string) => {
-    const { error } = await supabase.from("orders").update({ status }).eq("id", id);
+    const { error } = await supabase.from("orders").update({ status: status as "completed" | "failed" | "pending" | "refunded" }).eq("id", id);
     if (error) toast.error(error.message);
     else { toast.success("Order updated"); fetchOrders(); }
   };
@@ -677,7 +677,7 @@ function SettingsTab() {
     setSaving(true);
     let parsed: unknown;
     try { parsed = JSON.parse(newVal); } catch { parsed = newVal; }
-    const { error } = await supabase.from("site_settings").upsert({ key: newKey.trim(), value: parsed, updated_at: new Date().toISOString() });
+    const { error } = await supabase.from("site_settings").upsert({ key: newKey.trim(), value: parsed as never, updated_at: new Date().toISOString() });
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Setting saved!");
@@ -736,7 +736,7 @@ function SettingsTab() {
 }
 
 // ─── Credentials Dialog ───────────────────────────────────────────────────────
-type Credential = { id: string; content: string; label: string | null; is_delivered: boolean; order_id: string | null; delivered_at: string | null; created_at: string };
+type Credential = { id: string; content: string; label: string | null; order_id: string | null; delivered_at: string | null; created_at: string };
 
 function CredentialsDialog({ product, onClose }: { product: Product; onClose: () => void }) {
   const [creds, setCreds] = useState<Credential[]>([]);
@@ -751,17 +751,17 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
     setLoading(true);
     const { data } = await supabase
       .from("product_credentials")
-      .select("*")
+      .select("id, content, label, order_id, delivered_at, created_at")
       .eq("product_id", product.id)
       .order("created_at");
-    setCreds((data as Credential[]) ?? []);
+    setCreds(((data ?? []) as unknown) as Credential[]);
     setLoading(false);
   };
 
   useEffect(() => { fetchCreds(); }, []);
 
-  const available = creds.filter((c) => !c.is_delivered);
-  const delivered = creds.filter((c) => c.is_delivered);
+  const available = creds.filter((c) => !c.order_id);
+  const delivered = creds.filter((c) => c.order_id);
 
   const handleBulkAdd = async () => {
     const lines = bulkText.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -771,7 +771,6 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
       product_id: product.id,
       content,
       label: bulkLabel.trim() ? `${bulkLabel.trim()} #${i + 1}` : null,
-      is_delivered: false,
     }));
     const { error } = await supabase.from("product_credentials").insert(rows);
     setAdding(false);
@@ -871,7 +870,7 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground" onClick={() => handleCopy(c.content, c.id)}>
                         {copied === c.id ? <CheckCheck className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                       </Button>
-                      {!c.is_delivered && (
+                      {!c.order_id && (
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" onClick={() => handleDelete(c.id)}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
