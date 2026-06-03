@@ -870,7 +870,7 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground" onClick={() => handleCopy(c.content, c.id)}>
                         {copied === c.id ? <CheckCheck className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                       </Button>
-                      {!c.is_delivered && (
+                      {!c.order_id && (
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" onClick={() => handleDelete(c.id)}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
