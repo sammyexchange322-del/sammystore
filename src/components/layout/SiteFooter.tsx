@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link } from "react-router-dom";
 import { Facebook, MapPin, Mail, Phone, MessageCircle, Send, Users } from "lucide-react";
 import { contactInfo } from "@/data/site";
 
@@ -14,16 +14,8 @@ export function SiteFooter() {
   const year = new Date().getFullYear();
 
   const socials = [
-    {
-      icon: Facebook,
-      href: "https://www.facebook.com/profile.php?id=61590741410137",
-      label: "Facebook",
-    },
-    {
-      icon: TikTokIcon,
-      href: "https://www.tiktok.com/@o.n.l.y.s.a.m.m.y?_r=1&_t=ZS-96sJydYpfHh",
-      label: "TikTok",
-    },
+    { icon: Facebook, href: "https://www.facebook.com/profile.php?id=61590741410137", label: "Facebook" },
+    { icon: TikTokIcon, href: "https://www.tiktok.com/@o.n.l.y.s.a.m.m.y?_r=1&_t=ZS-96sJydYpfHh", label: "TikTok" },
   ];
 
   const community = [
@@ -37,8 +29,6 @@ export function SiteFooter() {
     <footer className="w-full bg-brand-navy text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-12">
-
-          {/* Brand */}
           <div className="space-y-5">
             <Link to="/" className="inline-block">
               <span className="text-xl font-bold">SAMMY <span className="text-brand-orange">STORE</span></span>
@@ -56,7 +46,6 @@ export function SiteFooter() {
             </div>
           </div>
 
-          {/* Links */}
           <FooterCol title="Useful Links">
             <FooterLink to="/products">Products</FooterLink>
             <FooterLink to="/about">About Us</FooterLink>
@@ -65,7 +54,6 @@ export function SiteFooter() {
             <FooterLink to="/dashboard">Dashboard</FooterLink>
           </FooterCol>
 
-          {/* Community */}
           <div>
             <FooterHeading>Community</FooterHeading>
             <ul className="space-y-3 mt-6">
@@ -81,7 +69,6 @@ export function SiteFooter() {
             </ul>
           </div>
 
-          {/* Contact */}
           <div>
             <FooterHeading>Contact Us</FooterHeading>
             <ul className="space-y-4 mt-6">
@@ -138,7 +125,7 @@ function FooterCol({ title, children }: { title: string; children: React.ReactNo
 function FooterLink({ to, children }: { to: string; children: React.ReactNode }) {
   return (
     <li>
-      <Link to={to as "/"} className="text-white/70 hover:text-white transition-colors text-sm">{children}</Link>
+      <Link to={to} className="text-white/70 hover:text-white transition-colors text-sm">{children}</Link>
     </li>
   );
 }

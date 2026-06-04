@@ -1,8 +1,7 @@
-import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Loader2, Wallet, ShoppingBag, ExternalLink, MessageCircle, Users, Send, Mail, Key, Copy, CheckCheck, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,31 +13,23 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { contactInfo } from "@/data/site";
 
-const searchSchema = z.object({ tab: z.string().optional() });
-
-export const Route = createFileRoute("/dashboard")({
-  validateSearch: (s) => searchSchema.parse(s),
-  head: () => ({ meta: [{ title: "Dashboard — Sammy Store Logs" }] }),
-  component: DashboardPage,
-});
-
 type WalletRow = { balance: number; currency: string; updated_at: string };
 type OrderItem = { title: string; quantity: number; unit_price: number };
 type Order = { id: string; total: number; currency: string; status: string; created_at: string; order_items: OrderItem[] };
 type Profile = { display_name: string | null; email: string | null; phone: string | null; created_at: string };
 type Credential = { id: string; content: string; label: string | null; delivered_at: string | null };
 
-function DashboardPage() {
+export default function DashboardPage() {
   const { user, loading, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const search = useSearch({ from: "/dashboard" });
+  const [searchParams] = useSearchParams();
   const [wallet, setWallet] = useState<WalletRow | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
-    if (!loading && !user) navigate({ to: "/auth", search: { redirect: "/dashboard" } });
+    if (!loading && !user) navigate("/auth?redirect=/dashboard");
   }, [user, loading, navigate]);
 
   useEffect(() => {
@@ -59,7 +50,7 @@ function DashboardPage() {
   if (loading || !user) return <div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-brand-orange" /></div>;
 
   const displayName = profile?.display_name ?? user.email?.split("@")[0] ?? "User";
-  const defaultTab = search.tab ?? "overview";
+  const defaultTab = searchParams.get("tab") ?? "overview";
 
   return (
     <div className="min-h-[calc(100vh-200px)] bg-background py-8 px-4">
@@ -171,7 +162,6 @@ function DashboardPage() {
   );
 }
 
-// ─── Order Card ───────────────────────────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
   completed: "bg-green-100 text-green-700", pending: "bg-yellow-100 text-yellow-700",
   failed: "bg-red-100 text-red-700", refunded: "bg-blue-100 text-blue-700",
@@ -193,10 +183,7 @@ function OrderCard({ order }: { order: Order }) {
     setCredsLoading(false);
   };
 
-  const openCreds = () => {
-    setCredOpen(true);
-    fetchCreds();
-  };
+  const openCreds = () => { setCredOpen(true); fetchCreds(); };
 
   const handleCopy = (content: string, id: string) => {
     navigator.clipboard.writeText(content);
@@ -223,7 +210,6 @@ function OrderCard({ order }: { order: Order }) {
                 <div className="font-semibold text-brand-navy">₦{Number(order.total).toLocaleString()}</div>
                 <div className="text-xs text-muted-foreground">{new Date(order.created_at).toLocaleDateString("en-NG")}</div>
               </div>
-              {/* Show credentials button for all orders (credential may or may not exist) */}
               <Button size="sm" variant="outline" onClick={openCreds}
                 className="border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white text-xs h-8">
                 <Key className="w-3 h-3 mr-1" />Credentials
@@ -233,7 +219,6 @@ function OrderCard({ order }: { order: Order }) {
         </CardContent>
       </Card>
 
-      {/* Credential view dialog */}
       <Dialog open={credOpen} onOpenChange={setCredOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -242,31 +227,24 @@ function OrderCard({ order }: { order: Order }) {
               Order Credentials — #{order.id.slice(-8).toUpperCase()}
             </DialogTitle>
           </DialogHeader>
-
           <div className="py-2">
             {credsLoading ? (
               <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-brand-orange" /></div>
             ) : creds.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
-                <div className="font-medium mb-1 flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4" />Delivery pending
-                </div>
-                <p>Credentials for this order haven't been assigned yet. Please check back shortly or contact support on WhatsApp / Telegram.</p>
+                <div className="font-medium mb-1 flex items-center gap-1.5"><AlertCircle className="w-4 h-4" />Delivery pending</div>
+                <p>Credentials for this order haven't been assigned yet. Please check back shortly or contact support.</p>
                 <div className="flex gap-2 mt-3 flex-wrap">
-                  <a href={contactInfo.whatsappSupport} target="_blank" rel="noopener noreferrer"
-                    className="text-xs font-medium text-green-700 hover:underline">WhatsApp Support →</a>
-                  <a href={contactInfo.telegramSupport} target="_blank" rel="noopener noreferrer"
-                    className="text-xs font-medium text-sky-600 hover:underline">Telegram Support →</a>
+                  <a href={contactInfo.whatsappSupport} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-green-700 hover:underline">WhatsApp Support →</a>
+                  <a href={contactInfo.telegramSupport} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-sky-600 hover:underline">Telegram Support →</a>
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">{creds.length} credential{creds.length > 1 ? "s" : ""} delivered for this order.</p>
+                <p className="text-sm text-muted-foreground">{creds.length} credential{creds.length > 1 ? "s" : ""} delivered.</p>
                 {creds.map((c) => (
                   <div key={c.id} className="rounded-xl border border-border overflow-hidden">
-                    {c.label && (
-                      <div className="bg-muted/50 px-4 py-2 text-xs font-medium text-brand-navy border-b border-border">{c.label}</div>
-                    )}
+                    {c.label && <div className="bg-muted/50 px-4 py-2 text-xs font-medium text-brand-navy border-b border-border">{c.label}</div>}
                     <div className="relative">
                       <pre className="p-4 text-sm font-mono whitespace-pre-wrap break-all leading-relaxed max-h-48 overflow-y-auto bg-muted/20">{c.content}</pre>
                       <Button size="sm" variant="ghost" onClick={() => handleCopy(c.content, c.id)}
@@ -294,7 +272,6 @@ function OrderCard({ order }: { order: Order }) {
   );
 }
 
-// ─── Profile Tab ──────────────────────────────────────────────────────────────
 function ProfileTab({ profile, user }: { profile: Profile | null; user: import("@supabase/supabase-js").User }) {
   const [displayName, setDisplayName] = useState(profile?.display_name ?? "");
   const [phone, setPhone] = useState(profile?.phone ?? "");
@@ -334,7 +311,6 @@ function ProfileTab({ profile, user }: { profile: Profile | null; user: import("
           </Button>
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader><CardTitle className="text-brand-navy text-base">Change Password</CardTitle></CardHeader>
         <CardContent>
@@ -351,7 +327,6 @@ function ProfileTab({ profile, user }: { profile: Profile | null; user: import("
   );
 }
 
-// ─── Support Tab ──────────────────────────────────────────────────────────────
 function SupportTab() {
   const links = [
     { icon: MessageCircle, label: "WhatsApp Support", href: contactInfo.whatsappSupport, color: "text-green-600", bg: "bg-green-50", desc: contactInfo.phone },

@@ -1,9 +1,8 @@
-import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Facebook, Instagram, Twitter, Youtube, Wrench, Loader2, ShoppingCart, X, Copy, CheckCheck, PackageCheck, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { z } from "zod";
 import { PageHero } from "@/components/sections/PageHero";
 import { categories as staticCategories } from "@/data/site";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,19 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { assignCredentialToOrder } from "@/lib/api/delivery";
 
-const searchSchema = z.object({ cat: z.string().optional() });
-
-export const Route = createFileRoute("/products")({
-  validateSearch: (s) => searchSchema.parse(s),
-  head: () => ({
-    meta: [
-      { title: "Products — Sammy Store Logs" },
-      { name: "description", content: "Browse verified social media account categories." },
-    ],
-  }),
-  component: ProductsPage,
-});
-
 type DbCategory = { id: string; name: string; slug: string; description: string | null };
 type Product = { id: string; title: string; price: number; stock: number; description: string | null; image_url: string | null; slug: string; currency: string };
 type DeliveredCred = { content: string; label: string | null };
@@ -36,10 +22,10 @@ const platformIcons: Record<string, React.ElementType> = {
   "usa-facebook": Facebook, tools: Wrench, "working-profiles": Instagram, "below-50-friend": Facebook, youtube: Youtube,
 };
 
-function ProductsPage() {
+export default function ProductsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const search = useSearch({ from: "/products" });
+  const [searchParams, setSearchParams] = useSearchParams();
   const [dbCategories, setDbCategories] = useState<DbCategory[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
@@ -50,7 +36,7 @@ function ProductsPage() {
   const [purchaseOrderId, setPurchaseOrderId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const activeCat = search.cat;
+  const activeCat = searchParams.get("cat") ?? undefined;
   const activeCategory = dbCategories.find((c) => c.slug === activeCat);
 
   useEffect(() => {
@@ -113,22 +99,18 @@ function ProductsPage() {
       return;
     }
 
-    // Refresh wallet balance
     supabase.from("wallets").select("balance").eq("user_id", user.id).single()
       .then(({ data }) => { if (data) setWalletBalance(Number(data.balance)); });
     refreshProducts();
 
-    // Assign a credential from the pool
     try {
-      const delivery = await assignCredentialToOrder({
-        data: { orderId: orderId as string, productId: buyTarget.id },
-      });
+      const delivery = await assignCredentialToOrder({ orderId: orderId as string, productId: buyTarget.id });
       setBuying(false);
       setPurchaseOrderId(orderId as string);
       if (delivery.assigned && delivery.content) {
         setDeliveredCred({ content: delivery.content, label: delivery.label });
       } else {
-        setDeliveredCred(null); // pending delivery
+        setDeliveredCred(null);
       }
     } catch {
       setBuying(false);
@@ -151,6 +133,11 @@ function ProductsPage() {
     setCopied(false);
   };
 
+  const setCat = (slug: string | undefined) => {
+    if (slug) setSearchParams({ cat: slug });
+    else setSearchParams({});
+  };
+
   return (
     <>
       <PageHero title="Our Products" subtitle="Verified accounts across every major social platform." breadcrumbs={[{ name: "Products" }]} />
@@ -170,7 +157,7 @@ function ProductsPage() {
                 <motion.button key={category.id}
                   initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
                   transition={{ duration: 0.45, delay: index * 0.08 }} whileHover={{ y: -4 }}
-                  onClick={() => navigate({ to: "/products", search: { cat: isActive ? undefined : category.slug } })}
+                  onClick={() => setCat(isActive ? undefined : category.slug)}
                   className={`group text-left bg-card rounded-2xl p-6 shadow-sm hover:shadow-lg transition-all border ${isActive ? "border-brand-orange ring-2 ring-brand-orange/30" : "border-border"}`}>
                   <div className="flex items-start justify-between mb-4">
                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${isActive ? "bg-brand-orange" : "bg-brand-orange/10 group-hover:bg-brand-orange"}`}>
@@ -189,7 +176,6 @@ function ProductsPage() {
             })}
           </div>
 
-          {/* Products grid for active category */}
           <AnimatePresence>
             {activeCat && (
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }}>
@@ -204,7 +190,7 @@ function ProductsPage() {
                     {user && walletBalance !== null && (
                       <span className="text-sm text-muted-foreground">Wallet: <span className="font-medium text-brand-navy">₦{walletBalance.toLocaleString()}</span></span>
                     )}
-                    <button onClick={() => navigate({ to: "/products", search: {} })} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-brand-navy transition-colors">
+                    <button onClick={() => setCat(undefined)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-brand-navy transition-colors">
                       <X className="w-4 h-4" />Close
                     </button>
                   </div>
@@ -244,7 +230,7 @@ function ProductsPage() {
                               <div className="text-lg font-bold text-brand-navy">₦{Number(p.price).toLocaleString()}</div>
                               <Button size="sm" disabled={p.stock === 0}
                                 onClick={() => {
-                                  if (!user) { navigate({ to: "/auth", search: { redirect: "/products" } }); return; }
+                                  if (!user) { navigate("/auth?redirect=/products"); return; }
                                   setBuyTarget(p);
                                 }}
                                 className="bg-brand-orange hover:bg-brand-orange-hover text-white text-xs">
@@ -263,7 +249,6 @@ function ProductsPage() {
         </div>
       </section>
 
-      {/* CTA */}
       <section className="w-full bg-brand-navy py-16 md:py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-4 tracking-tight">Can't find what you're looking for?</h2>
@@ -274,7 +259,6 @@ function ProductsPage() {
         </div>
       </section>
 
-      {/* ── Purchase confirmation dialog ──────────────────────────────── */}
       <Dialog open={!!buyTarget && !purchaseOrderId} onOpenChange={(o) => { if (!o) { setBuyTarget(null); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Confirm Purchase</DialogTitle></DialogHeader>
@@ -309,7 +293,6 @@ function ProductsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Purchase result + credential delivery dialog ──────────────── */}
       <Dialog open={!!purchaseOrderId} onOpenChange={(o) => { if (!o) closePurchaseResult(); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -318,12 +301,10 @@ function ProductsPage() {
               Order Confirmed!
             </DialogTitle>
           </DialogHeader>
-
           <div className="py-2 space-y-4">
             <p className="text-sm text-muted-foreground">
               Your purchase of <span className="font-medium text-brand-navy">{buyTarget?.title}</span> was successful.
             </p>
-
             {deliveredCred ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-brand-navy">
@@ -349,13 +330,12 @@ function ProductsPage() {
                 <div className="font-medium mb-1 flex items-center gap-1.5">
                   <AlertCircle className="w-4 h-4" />Delivery pending
                 </div>
-                <p>Your order has been placed. Account credentials will be delivered to your Dashboard within a short time. Our team has been notified.</p>
+                <p>Your order has been placed. Account credentials will be delivered to your Dashboard within a short time.</p>
               </div>
             )}
-
             <div className="flex gap-2 pt-1">
               <Button asChild variant="outline" size="sm" className="flex-1">
-                <Link to="/dashboard" search={{ tab: "orders" } as never}>View in Dashboard</Link>
+                <Link to="/dashboard?tab=orders">View in Dashboard</Link>
               </Button>
               <Button onClick={closePurchaseResult} size="sm" className="flex-1 bg-brand-orange hover:bg-brand-orange-hover text-white">
                 Continue Shopping

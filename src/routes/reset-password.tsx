@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
@@ -7,12 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export const Route = createFileRoute("/reset-password")({
-  head: () => ({ meta: [{ title: "Reset Password — Sammy Store Logs" }] }),
-  component: ResetPasswordPage,
-});
-
-function ResetPasswordPage() {
+export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -40,7 +35,7 @@ function ResetPasswordPage() {
       toast.error(error.message);
     } else {
       toast.success("Password updated! Redirecting…");
-      setTimeout(() => navigate({ to: "/dashboard" }), 1500);
+      setTimeout(() => navigate("/dashboard"), 1500);
     }
   };
 

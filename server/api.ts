@@ -1,0 +1,256 @@
+import express from "express";
+import cors from "cors";
+import { createClient } from "@supabase/supabase-js";
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY ?? "";
+const NOWPAYMENTS_API_KEY = process.env.NOWPAYMENTS_API_KEY ?? "";
+
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
+
+async function getAuthUser(req: express.Request) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) return null;
+  const token = auth.slice(7);
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data.user) return null;
+  return data.user;
+}
+
+function err(res: express.Response, status: number, msg: string) {
+  return res.status(status).json({ error: msg });
+}
+
+// ── Paystack: verify + credit wallet ─────────────────────────────────────────
+app.post("/api/payment/verify-paystack", async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) return err(res, 401, "Unauthorized");
+
+  const { reference, userId } = req.body as { reference?: string; userId?: string };
+  if (!reference || !userId) return err(res, 400, "reference and userId are required");
+  if (userId !== user.id) return err(res, 403, "Forbidden");
+
+  const { data: intent, error: intentErr } = await supabaseAdmin
+    .from("payment_intents")
+    .select("*")
+    .eq("reference", reference)
+    .eq("user_id", userId)
+    .eq("provider", "paystack")
+    .single();
+
+  if (intentErr || !intent) return err(res, 400, "Invalid or expired payment reference");
+  if ((intent as Record<string, unknown>).status === "success") {
+    return res.json({ success: true, amount: Number((intent as Record<string, unknown>).amount), alreadyCredited: true });
+  }
+
+  if (!PAYSTACK_SECRET_KEY) return err(res, 500, "Paystack is not configured — contact support");
+
+  const paystackRes = await fetch(
+    `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+    { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } }
+  );
+  if (!paystackRes.ok) return err(res, 502, "Could not reach Paystack — please try again");
+
+  const json = (await paystackRes.json()) as { status: boolean; data?: { status: string; amount: number } };
+  if (!json.status || json.data?.status !== "success") {
+    return err(res, 400, "Payment not confirmed — contact support if you were charged");
+  }
+
+  const amount = (json.data?.amount ?? 0) / 100;
+
+  const { error: creditErr } = await supabaseAdmin.rpc(
+    "credit_wallet" as never,
+    { _user_id: userId, _amount: amount, _provider: "paystack", _reference: reference, _description: "Wallet funded via Paystack" } as never
+  );
+  if (creditErr) return err(res, 500, (creditErr as { message: string }).message);
+
+  await supabaseAdmin
+    .from("payment_intents")
+    .update({ status: "success", updated_at: new Date().toISOString() })
+    .eq("reference", reference);
+
+  return res.json({ success: true, amount, alreadyCredited: false });
+});
+
+// ── NOWPayments: create invoice ───────────────────────────────────────────────
+app.post("/api/payment/nowpayments-invoice", async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) return err(res, 401, "Unauthorized");
+
+  const { amount, userId, reference } = req.body as { amount?: number; userId?: string; reference?: string };
+  if (!amount || !userId || !reference) return err(res, 400, "amount, userId and reference are required");
+  if (userId !== user.id) return err(res, 403, "Forbidden");
+
+  const { data: intent, error: intentErr } = await supabaseAdmin
+    .from("payment_intents")
+    .select("id")
+    .eq("reference", reference)
+    .eq("user_id", userId)
+    .eq("provider", "nowpayments")
+    .single();
+
+  if (intentErr || !intent) return err(res, 400, "Invalid payment reference");
+  if (!NOWPAYMENTS_API_KEY) return err(res, 500, "NOWPayments is not configured — contact support");
+
+  const siteUrl =
+    process.env.VITE_SITE_URL ??
+    (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "https://your-app.replit.app");
+
+  const nowRes = await fetch("https://api.nowpayments.io/v1/invoice", {
+    method: "POST",
+    headers: { "x-api-key": NOWPAYMENTS_API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      price_amount: amount,
+      price_currency: "ngn",
+      order_id: reference,
+      order_description: "Sammy Store Logs — Wallet Funding",
+      success_url: `${siteUrl}/wallet?funded=crypto`,
+      cancel_url: `${siteUrl}/wallet`,
+    }),
+  });
+
+  if (!nowRes.ok) {
+    const errText = await nowRes.text();
+    return err(res, 502, `NOWPayments error: ${errText}`);
+  }
+  const invoice = (await nowRes.json()) as { invoice_url: string; id: string };
+  return res.json({ invoiceUrl: invoice.invoice_url, invoiceId: invoice.id });
+});
+
+// ── NOWPayments: poll status ──────────────────────────────────────────────────
+app.post("/api/payment/nowpayments-status", async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) return err(res, 401, "Unauthorized");
+
+  const { reference, userId } = req.body as { reference?: string; userId?: string };
+  if (!reference || !userId) return err(res, 400, "reference and userId are required");
+  if (userId !== user.id) return err(res, 403, "Forbidden");
+
+  const { data: intent } = await supabaseAdmin
+    .from("payment_intents")
+    .select("*")
+    .eq("reference", reference)
+    .eq("user_id", userId)
+    .single();
+
+  if (!intent) return err(res, 404, "Payment intent not found");
+  if ((intent as Record<string, unknown>).status === "success") return res.json({ status: "success", alreadyCredited: true });
+
+  if (!NOWPAYMENTS_API_KEY) return err(res, 500, "NOWPayments not configured");
+
+  const nowRes = await fetch(
+    `https://api.nowpayments.io/v1/payment?order_id=${encodeURIComponent(reference)}&limit=1`,
+    { headers: { "x-api-key": NOWPAYMENTS_API_KEY } }
+  );
+  if (!nowRes.ok) return err(res, 502, "Failed to check payment status");
+
+  const json = (await nowRes.json()) as { data?: { payment_status?: string }[] };
+  const paymentStatus = json.data?.[0]?.payment_status ?? "waiting";
+
+  if (paymentStatus === "finished" || paymentStatus === "confirmed") {
+    const { error: creditErr } = await supabaseAdmin.rpc(
+      "credit_wallet" as never,
+      { _user_id: userId, _amount: Number((intent as Record<string, unknown>).amount), _provider: "nowpayments", _reference: reference, _description: "Wallet funded via NOWPayments (crypto)" } as never
+    );
+    if (!creditErr) {
+      await supabaseAdmin
+        .from("payment_intents")
+        .update({ status: "success", updated_at: new Date().toISOString() })
+        .eq("reference", reference);
+      return res.json({ status: "success", alreadyCredited: false });
+    }
+  }
+  return res.json({ status: paymentStatus, alreadyCredited: false });
+});
+
+// ── Admin: credit wallet ──────────────────────────────────────────────────────
+app.post("/api/payment/admin-credit", async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) return err(res, 401, "Unauthorized");
+
+  const { data: roles } = await supabaseAdmin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .eq("role", "admin")
+    .limit(1);
+  if (!roles?.length) return err(res, 403, "Forbidden: admin access required");
+
+  const { targetUserId, amount, description } = req.body as { targetUserId?: string; amount?: number; description?: string };
+  if (!targetUserId || !amount || !description) return err(res, 400, "targetUserId, amount and description are required");
+
+  const ref = `admin-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+
+  const { error: creditErr } = await supabaseAdmin.rpc(
+    "credit_wallet" as never,
+    { _user_id: targetUserId, _amount: amount, _provider: "manual", _reference: ref, _description: description } as never
+  );
+  if (creditErr) return err(res, 500, (creditErr as { message: string }).message);
+
+  await supabaseAdmin.from("activity_logs").insert({
+    actor_id: user.id,
+    action: "admin_credit_wallet",
+    target: targetUserId,
+    metadata: { amount, description, ref },
+  });
+
+  return res.json({ success: true });
+});
+
+// ── Delivery: assign credential to order ─────────────────────────────────────
+app.post("/api/delivery/assign-credential", async (req, res) => {
+  const user = await getAuthUser(req);
+  if (!user) return err(res, 401, "Unauthorized");
+
+  const { orderId, productId } = req.body as { orderId?: string; productId?: string };
+  if (!orderId || !productId) return err(res, 400, "orderId and productId are required");
+
+  const { data: order, error: orderErr } = await supabaseAdmin
+    .from("orders")
+    .select("id, user_id, status, created_at")
+    .eq("id", orderId)
+    .single();
+
+  if (orderErr || !order) return err(res, 404, "Order not found");
+  if ((order as Record<string, unknown>).user_id !== user.id) return err(res, 403, "Forbidden");
+
+  const ageMs = Date.now() - new Date((order as Record<string, unknown>).created_at as string).getTime();
+  if (ageMs > 10 * 60 * 1000) return err(res, 400, "Order too old for credential assignment");
+
+  const { data: credId, error: assignErr } = await supabaseAdmin.rpc(
+    "assign_credential_to_order" as never,
+    { _order_id: orderId, _product_id: productId } as never
+  );
+
+  if (assignErr) return err(res, 500, (assignErr as { message: string }).message);
+
+  if (!credId) {
+    await supabaseAdmin.from("activity_logs").insert({
+      actor_id: (order as Record<string, unknown>).user_id as string,
+      action: "credential_out_of_stock",
+      target: productId,
+      metadata: { order_id: orderId },
+    });
+    return res.json({ assigned: false, content: null, label: null });
+  }
+
+  const { data: cred } = await supabaseAdmin
+    .from("product_credentials")
+    .select("content, label")
+    .eq("id", credId as string)
+    .single();
+
+  return res.json({ assigned: true, content: (cred as Record<string, unknown> | null)?.content ?? null, label: (cred as Record<string, unknown> | null)?.label ?? null });
+});
+
+const PORT = parseInt(process.env.API_PORT ?? "3001", 10);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`API server running on port ${PORT}`);
+});

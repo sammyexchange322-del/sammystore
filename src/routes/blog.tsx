@@ -1,29 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Calendar, ArrowRight } from "lucide-react";
 import { PageHero } from "@/components/sections/PageHero";
 import { blogs } from "@/data/site";
 
-export const Route = createFileRoute("/blog")({
-  head: () => ({
-    meta: [
-      { title: "Blog — Sammy Store Logs" },
-      {
-        name: "description",
-        content:
-          "Articles, tips and insights about social media marketing and growing an established online presence.",
-      },
-      { property: "og:title", content: "Sammy Store Logs Blog" },
-      {
-        property: "og:description",
-        content: "Insights, tips and news about social media growth.",
-      },
-    ],
-  }),
-  component: BlogPage,
-});
-
-function BlogPage() {
+export default function BlogPage() {
   return (
     <>
       <PageHero
@@ -41,9 +21,7 @@ function BlogPage() {
             transition={{ duration: 0.5 }}
             className="text-center mb-12"
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-brand-navy mb-3 tracking-tight">
-              Latest articles
-            </h2>
+            <h2 className="text-3xl md:text-4xl font-bold text-brand-navy mb-3 tracking-tight">Latest articles</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
               Stay updated with the latest tips and insights about social media marketing.
             </p>
@@ -75,9 +53,7 @@ function BlogPage() {
                       <Calendar className="w-4 h-4" />
                       <span>{blog.date}</span>
                     </div>
-                    <h3 className="text-lg font-semibold text-brand-navy mb-3 line-clamp-2">
-                      {blog.title}
-                    </h3>
+                    <h3 className="text-lg font-semibold text-brand-navy mb-3 line-clamp-2">{blog.title}</h3>
                     <p className="text-muted-foreground text-sm mb-4 line-clamp-3">{blog.excerpt}</p>
                     <button
                       type="button"

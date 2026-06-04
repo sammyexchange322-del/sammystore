@@ -1,8 +1,7 @@
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Wallet, ArrowDownCircle, ArrowUpCircle, Bitcoin, CreditCard, CheckCircle2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,29 +11,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { verifyPaystackPayment, createNowPaymentsInvoice, checkNowPaymentsStatus } from "@/lib/api/payment";
 
-const searchSchema = z.object({ funded: z.string().optional() });
-
-export const Route = createFileRoute("/wallet")({
-  validateSearch: (s) => searchSchema.parse(s),
-  head: () => ({ meta: [{ title: "Wallet — Sammy Store Logs" }] }),
-  component: WalletPage,
-});
-
 type WalletRow = { id: string; balance: number; currency: string; updated_at: string };
 type Tx = { id: string; type: "credit" | "debit"; amount: number; balance_after: number; status: string; provider: string | null; description: string | null; created_at: string };
 
 declare global { interface Window { PaystackPop: { setup(o: Record<string, unknown>): { openIframe(): void } } } }
 
-function WalletPage() {
+export default function WalletPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const search = useSearch({ from: "/wallet" });
+  const [searchParams] = useSearchParams();
   const [wallet, setWallet] = useState<WalletRow | null>(null);
   const [transactions, setTransactions] = useState<Tx[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const psLoaded = useRef(false);
 
-  useEffect(() => { if (!loading && !user) navigate({ to: "/auth", search: { redirect: "/wallet" } }); }, [user, loading, navigate]);
+  useEffect(() => { if (!loading && !user) navigate("/auth?redirect=/wallet"); }, [user, loading, navigate]);
 
   useEffect(() => {
     if (psLoaded.current) return;
@@ -60,9 +51,10 @@ function WalletPage() {
   useEffect(() => { if (user) fetchData(); }, [user]);
 
   useEffect(() => {
-    if (search.funded === "1") toast.success("Payment submitted! Your wallet will be credited shortly.");
-    else if (search.funded === "crypto") toast.info("Crypto payment submitted — click 'Check Status' below to confirm.");
-  }, [search.funded]);
+    const funded = searchParams.get("funded");
+    if (funded === "1") toast.success("Payment submitted! Your wallet will be credited shortly.");
+    else if (funded === "crypto") toast.info("Crypto payment submitted — click 'Check Status' below to confirm.");
+  }, [searchParams]);
 
   useEffect(() => {
     if (!user) return;
@@ -141,7 +133,6 @@ function FundWallet({ user, wallet, onFunded }: { user: import("@supabase/supaba
 
     const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY as string | undefined;
     if (!publicKey) return toast.error("Paystack is not configured yet — contact admin");
-
     if (!window.PaystackPop) return toast.error("Paystack is still loading — please wait a moment");
 
     setPsLoading(true);
@@ -164,7 +155,7 @@ function FundWallet({ user, wallet, onFunded }: { user: import("@supabase/supaba
       onSuccess: async (tx: { reference: string }) => {
         const tid = toast.loading("Verifying payment…");
         try {
-          const result = await verifyPaystackPayment({ data: { reference: tx.reference, userId: user.id } });
+          const result = await verifyPaystackPayment({ reference: tx.reference, userId: user.id });
           toast.dismiss(tid);
           if (result.alreadyCredited) toast.info("Payment already credited");
           else toast.success(`₦${result.amount?.toLocaleString()} added to your wallet!`);
@@ -195,7 +186,7 @@ function FundWallet({ user, wallet, onFunded }: { user: import("@supabase/supaba
     if (intentErr) { setNowLoading(false); return toast.error("Failed to initialize payment"); }
 
     try {
-      const result = await createNowPaymentsInvoice({ data: { amount: amt, userId: user.id, reference: ref } });
+      const result = await createNowPaymentsInvoice({ amount: amt, userId: user.id, reference: ref });
       setNowLoading(false);
       if (result.invoiceUrl) {
         setCryptoPending({ reference: ref });
@@ -212,7 +203,7 @@ function FundWallet({ user, wallet, onFunded }: { user: import("@supabase/supaba
     if (!cryptoPending) return;
     setCheckingStatus(true);
     try {
-      const result = await checkNowPaymentsStatus({ data: { reference: cryptoPending.reference, userId: user.id } });
+      const result = await checkNowPaymentsStatus({ reference: cryptoPending.reference, userId: user.id });
       setCheckingStatus(false);
       if (result.status === "success") {
         toast.success(result.alreadyCredited ? "Already credited!" : "Wallet credited successfully!");
@@ -230,7 +221,6 @@ function FundWallet({ user, wallet, onFunded }: { user: import("@supabase/supaba
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* Paystack */}
       <Card>
         <CardHeader>
           <CardTitle className="text-brand-navy flex items-center gap-2 text-base">
@@ -239,7 +229,6 @@ function FundWallet({ user, wallet, onFunded }: { user: import("@supabase/supaba
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">Pay via card, bank transfer, or USSD — instant credit.</p>
-
           <div>
             <Label className="text-xs font-medium text-muted-foreground mb-2 block">Quick amounts</Label>
             <div className="flex flex-wrap gap-2">
@@ -251,12 +240,10 @@ function FundWallet({ user, wallet, onFunded }: { user: import("@supabase/supaba
               ))}
             </div>
           </div>
-
           <div>
             <Label htmlFor="ps-amount">Amount (₦)</Label>
             <Input id="ps-amount" type="number" min="100" placeholder="Enter amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1" />
           </div>
-
           <Button onClick={handlePaystack} disabled={psLoading || amt < 100} className="w-full bg-brand-orange hover:bg-brand-orange-hover text-white">
             {psLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Pay ₦{amt > 0 ? amt.toLocaleString() : "—"} with Paystack
@@ -264,7 +251,6 @@ function FundWallet({ user, wallet, onFunded }: { user: import("@supabase/supaba
         </CardContent>
       </Card>
 
-      {/* NOWPayments */}
       <Card>
         <CardHeader>
           <CardTitle className="text-brand-navy flex items-center gap-2 text-base">
@@ -273,7 +259,6 @@ function FundWallet({ user, wallet, onFunded }: { user: import("@supabase/supaba
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">Fund via Bitcoin, USDT, ETH and 50+ cryptocurrencies via NOWPayments.</p>
-
           <div>
             <Label className="text-xs font-medium text-muted-foreground mb-2 block">Quick amounts</Label>
             <div className="flex flex-wrap gap-2">
@@ -285,12 +270,10 @@ function FundWallet({ user, wallet, onFunded }: { user: import("@supabase/supaba
               ))}
             </div>
           </div>
-
           <div>
             <Label htmlFor="np-amount">Amount (₦ equivalent)</Label>
             <Input id="np-amount" type="number" min="100" placeholder="Enter amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1" />
           </div>
-
           {cryptoPending ? (
             <div className="space-y-3">
               <div className="flex items-start gap-2 text-sm text-sky-700 bg-sky-50 p-3 rounded-lg">

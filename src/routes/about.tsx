@@ -1,26 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { Check, Shield, Users, Zap, Target, Clock } from "lucide-react";
 import { PageHero } from "@/components/sections/PageHero";
-
-export const Route = createFileRoute("/about")({
-  head: () => ({
-    meta: [
-      { title: "About — Sammy Store Logs" },
-      {
-        name: "description",
-        content:
-          "Learn why thousands trust Sammy Store Logs for verified social media accounts with instant delivery and 24/7 support.",
-      },
-      { property: "og:title", content: "About Sammy Store Logs" },
-      {
-        property: "og:description",
-        content: "Our story, our values, and why customers trust us.",
-      },
-    ],
-  }),
-  component: AboutPage,
-});
 
 const benefits = [
   { icon: Shield, title: "Verified Accounts", description: "Every account is thoroughly authenticated before listing." },
@@ -40,7 +20,7 @@ const features = [
   "Verified Accounts",
 ];
 
-function AboutPage() {
+export default function AboutPage() {
   return (
     <>
       <PageHero
@@ -112,12 +92,8 @@ function AboutPage() {
             transition={{ duration: 0.5 }}
             className="text-center mb-12"
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-brand-navy mb-3 tracking-tight">
-              Why choose us
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              A complete solution for your social media account needs.
-            </p>
+            <h2 className="text-3xl md:text-4xl font-bold text-brand-navy mb-3 tracking-tight">Why choose us</h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">A complete solution for your social media account needs.</p>
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

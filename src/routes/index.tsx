@@ -1,28 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Check, ArrowRight, ShieldCheck, Zap, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FloatingIcons } from "@/components/shared/FloatingIcons";
 import { categories, testimonials } from "@/data/site";
-
-export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Sammy Store Logs — Buy Verified Social Media Accounts" },
-      {
-        name: "description",
-        content:
-          "Browse verified Instagram, Facebook, Twitter and YouTube accounts. Secure transactions, instant delivery and 24/7 support.",
-      },
-      { property: "og:title", content: "Sammy Store Logs" },
-      {
-        property: "og:description",
-        content: "Buy verified social media accounts with secure, instant delivery.",
-      },
-    ],
-  }),
-  component: HomePage,
-});
 
 const features = [
   "Instant Credibility",
@@ -38,10 +19,9 @@ const stats = [
   { icon: Zap, label: "Instant Delivery", value: "24/7" },
 ];
 
-function HomePage() {
+export default function HomePage() {
   return (
     <>
-      {/* Hero */}
       <section className="relative w-full bg-gradient-to-b from-brand-cream to-background py-16 md:py-24 overflow-hidden">
         <FloatingIcons />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -83,10 +63,7 @@ function HomePage() {
             >
               {categories.slice(0, 5).map((category, idx) => (
                 <span key={category.id} className="flex items-center text-sm">
-                  <Link
-                    to="/products"
-                    className="text-muted-foreground hover:text-brand-orange transition-colors"
-                  >
+                  <Link to="/products" className="text-muted-foreground hover:text-brand-orange transition-colors">
                     {category.name}
                   </Link>
                   {idx < 4 && <span className="text-border ml-5">|</span>}
@@ -120,7 +97,6 @@ function HomePage() {
         </div>
       </section>
 
-      {/* Stats */}
       <section className="w-full bg-background border-y border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -139,7 +115,6 @@ function HomePage() {
         </div>
       </section>
 
-      {/* About */}
       <section className="w-full bg-background py-16 md:py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
@@ -151,11 +126,7 @@ function HomePage() {
               className="relative"
             >
               <div className="relative rounded-3xl overflow-hidden shadow-2xl">
-                <img
-                  src="/images/about-promo.jpg"
-                  alt="Sammy Store Logs"
-                  className="w-full h-auto object-cover"
-                />
+                <img src="/images/about-promo.jpg" alt="Sammy Store Logs" className="w-full h-auto object-cover" />
               </div>
               <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-brand-orange/15 rounded-full -z-10" />
               <div className="absolute -top-6 -left-6 w-24 h-24 bg-brand-navy/10 rounded-full -z-10" />
@@ -170,9 +141,7 @@ function HomePage() {
             >
               <div className="flex items-center gap-4">
                 <div className="w-10 h-0.5 bg-brand-orange" />
-                <span className="text-brand-orange font-medium uppercase tracking-wider text-sm">
-                  About Us
-                </span>
+                <span className="text-brand-orange font-medium uppercase tracking-wider text-sm">About Us</span>
               </div>
               <h2 className="text-3xl md:text-4xl font-bold text-brand-navy leading-tight tracking-tight">
                 Unlock the power of an established social media presence.
@@ -193,11 +162,7 @@ function HomePage() {
                 ))}
               </div>
               <div className="pt-2">
-                <Button
-                  asChild
-                  variant="link"
-                  className="text-brand-orange hover:text-brand-orange-hover p-0 h-auto font-semibold"
-                >
+                <Button asChild variant="link" className="text-brand-orange hover:text-brand-orange-hover p-0 h-auto font-semibold">
                   <Link to="/about" className="inline-flex items-center gap-2">
                     Learn more about us <ArrowRight className="w-4 h-4" />
                   </Link>
@@ -208,7 +173,6 @@ function HomePage() {
         </div>
       </section>
 
-      {/* Testimonials */}
       <section className="w-full bg-muted/40 py-16 md:py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
@@ -220,9 +184,7 @@ function HomePage() {
           >
             <div className="flex items-center justify-center gap-4 mb-3">
               <div className="w-10 h-0.5 bg-brand-orange" />
-              <span className="text-brand-orange font-medium uppercase tracking-wider text-sm">
-                Testimonials
-              </span>
+              <span className="text-brand-orange font-medium uppercase tracking-wider text-sm">Testimonials</span>
               <div className="w-10 h-0.5 bg-brand-orange" />
             </div>
             <h2 className="text-3xl md:text-4xl font-bold text-brand-navy tracking-tight">
@@ -241,16 +203,10 @@ function HomePage() {
                 whileHover={{ y: -4 }}
                 className="bg-card rounded-2xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 border border-border"
               >
-                <div className="text-brand-orange text-3xl leading-none mb-3">“</div>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                  {t.content}
-                </p>
+                <div className="text-brand-orange text-3xl leading-none mb-3">"</div>
+                <p className="text-muted-foreground text-sm leading-relaxed mb-6">{t.content}</p>
                 <div className="flex items-center gap-3 pt-4 border-t border-border">
-                  <img
-                    src={t.avatar}
-                    alt={t.name}
-                    className="w-12 h-12 rounded-full object-cover"
-                  />
+                  <img src={t.avatar} alt={t.name} className="w-12 h-12 rounded-full object-cover" />
                   <div>
                     <h4 className="font-semibold text-brand-navy">{t.name}</h4>
                     <p className="text-xs text-muted-foreground">{t.role}</p>

@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, NavLink } from "react-router-dom";
 import { useState } from "react";
 import { Search, User, UserPlus, LayoutGrid, ChevronDown, Menu, LogOut, LayoutDashboard, Wallet } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,6 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur border-b border-border">
-      {/* Top bar */}
       <div className="border-b border-border/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-[68px] gap-4">
@@ -59,29 +58,27 @@ export function SiteHeader() {
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="gap-2 border-brand-navy/20">
                       <User className="w-4 h-4" />
-                      <span className="hidden sm:inline max-w-[120px] truncate">
-                        {user.email}
-                      </span>
+                      <span className="hidden sm:inline max-w-[120px] truncate">{user.email}</span>
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
                     <DropdownMenuLabel className="truncate">{user.email}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                      <a href="/dashboard" className="cursor-pointer flex items-center">
+                      <Link to="/dashboard" className="cursor-pointer flex items-center">
                         <LayoutDashboard className="w-4 h-4 mr-2" /> Dashboard
-                      </a>
+                      </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <a href="/wallet" className="cursor-pointer flex items-center">
+                      <Link to="/wallet" className="cursor-pointer flex items-center">
                         <Wallet className="w-4 h-4 mr-2" /> Wallet
-                      </a>
+                      </Link>
                     </DropdownMenuItem>
                     {isAdmin && (
                       <DropdownMenuItem asChild>
-                        <a href="/admin" className="cursor-pointer flex items-center">
+                        <Link to="/admin" className="cursor-pointer flex items-center">
                           <LayoutGrid className="w-4 h-4 mr-2" /> Admin
-                        </a>
+                        </Link>
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
@@ -96,18 +93,14 @@ export function SiteHeader() {
               ) : (
                 <>
                   <Link
-                    to="/auth"
-                    search={{ mode: "login" }}
+                    to="/auth?mode=login"
                     className="hidden sm:inline-flex items-center gap-2 text-brand-navy hover:text-brand-orange transition-colors font-medium text-sm"
                   >
                     <User className="w-4 h-4" />
                     Login
                   </Link>
-                  <Button
-                    asChild
-                    className="bg-brand-orange hover:bg-brand-orange-hover text-white shadow-sm"
-                  >
-                    <Link to="/auth" search={{ mode: "signup" }} className="flex items-center gap-2">
+                  <Button asChild className="bg-brand-orange hover:bg-brand-orange-hover text-white shadow-sm">
+                    <Link to="/auth?mode=signup" className="flex items-center gap-2">
                       <UserPlus className="w-4 h-4" />
                       <span className="hidden xs:inline">Register</span>
                       <span className="xs:hidden">Join</span>
@@ -120,7 +113,6 @@ export function SiteHeader() {
         </div>
       </div>
 
-      {/* Nav bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-[56px] gap-4">
           <DropdownMenu>
@@ -134,7 +126,7 @@ export function SiteHeader() {
             <DropdownMenuContent align="start" className="w-64">
               {categories.map((category) => (
                 <DropdownMenuItem key={category.id} asChild>
-                  <Link to="/products" search={{ cat: category.slug }} className="cursor-pointer">
+                  <Link to={`/products?cat=${category.slug}`} className="cursor-pointer">
                     {category.name}
                   </Link>
                 </DropdownMenuItem>
@@ -144,15 +136,16 @@ export function SiteHeader() {
 
           <div className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
-              <Link
+              <NavLink
                 key={link.name}
                 to={link.to}
-                className="text-brand-navy hover:text-brand-orange transition-colors font-medium text-[15px]"
-                activeProps={{ className: "text-brand-orange" }}
-                activeOptions={{ exact: link.to === "/" }}
+                end={link.to === "/"}
+                className={({ isActive }) =>
+                  `text-brand-navy hover:text-brand-orange transition-colors font-medium text-[15px]${isActive ? " text-brand-orange" : ""}`
+                }
               >
                 {link.name}
-              </Link>
+              </NavLink>
             ))}
           </div>
 

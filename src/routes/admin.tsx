@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
   Loader2, Users, Package, ShoppingCart, CreditCard, BarChart3, Settings,
@@ -18,30 +18,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ImageUploader } from "@/components/admin/ImageUploader";
 
-export const Route = createFileRoute("/admin")({
-  head: () => ({ meta: [{ title: "Admin — Sammy Store Logs" }] }),
-  component: AdminPage,
-});
-
-// ─── Types ───────────────────────────────────────────────────────────────────
 type Profile = { id: string; email: string | null; display_name: string | null; created_at: string };
 type UserWallet = { balance: number; currency: string };
 type UserRow = Profile & { wallet: UserWallet | null; role: string };
 type Category = { id: string; name: string; slug: string };
 type Product = { id: string; title: string; slug: string; price: number; stock: number; published: boolean; description: string | null; image_url: string | null; category_id: string | null; currency: string; created_at: string };
-type Order = { id: string; user_id: string; total: number; status: string; currency: string; created_at: string; user_email?: string };
-type Tx = { id: string; user_id: string; type: string; amount: number; provider: string | null; description: string | null; status: string; created_at: string; user_email?: string };
+type Order = { id: string; user_id: string; total: number; status: string; currency: string; created_at: string };
+type Tx = { id: string; user_id: string; type: string; amount: number; provider: string | null; description: string | null; status: string; created_at: string };
 type Stats = { users: number; revenue: number; orders: number; products: number };
 
-// ─── Guard ────────────────────────────────────────────────────────────────────
-function AdminPage() {
+export default function AdminPage() {
   const { user, loading, isAdmin, role } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!loading) {
-      if (!user) navigate({ to: "/auth", search: { redirect: "/admin" } });
-      else if (role !== null && !isAdmin) navigate({ to: "/dashboard" });
+      if (!user) navigate("/auth?redirect=/admin");
+      else if (role !== null && !isAdmin) navigate("/dashboard");
     }
   }, [user, loading, isAdmin, role, navigate]);
 
@@ -51,7 +44,6 @@ function AdminPage() {
   return <AdminDashboard adminUser={user} />;
 }
 
-// ─── Dashboard ────────────────────────────────────────────────────────────────
 function AdminDashboard({ adminUser }: { adminUser: import("@supabase/supabase-js").User }) {
   const [stats, setStats] = useState<Stats>({ users: 0, revenue: 0, orders: 0, products: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
@@ -86,7 +78,6 @@ function AdminDashboard({ adminUser }: { adminUser: import("@supabase/supabase-j
           <Button asChild variant="outline" size="sm"><Link to="/dashboard">← User Dashboard</Link></Button>
         </div>
 
-        {/* Stats */}
         {!statsLoading && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {[
@@ -118,7 +109,7 @@ function AdminDashboard({ adminUser }: { adminUser: import("@supabase/supabase-j
             <TabsTrigger value="settings"><Settings className="w-3.5 h-3.5 mr-1" />Settings</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="users"><UsersTab adminUser={adminUser} /></TabsContent>
+          <TabsContent value="users"><UsersTab /></TabsContent>
           <TabsContent value="products"><ProductsTab /></TabsContent>
           <TabsContent value="orders"><OrdersTab /></TabsContent>
           <TabsContent value="payments"><PaymentsTab /></TabsContent>
@@ -130,8 +121,7 @@ function AdminDashboard({ adminUser }: { adminUser: import("@supabase/supabase-j
   );
 }
 
-// ─── Users Tab ────────────────────────────────────────────────────────────────
-function UsersTab({ adminUser }: { adminUser: import("@supabase/supabase-js").User }) {
+function UsersTab() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -144,21 +134,14 @@ function UsersTab({ adminUser }: { adminUser: import("@supabase/supabase-js").Us
     setLoading(true);
     const { data: profiles } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
     if (!profiles) { setLoading(false); return; }
-
     const ids = profiles.map((p: Profile) => p.id);
     const [wallets, roles] = await Promise.all([
       supabase.from("wallets").select("user_id, balance, currency").in("user_id", ids),
       supabase.from("user_roles").select("user_id, role").in("user_id", ids),
     ]);
-
     const walletMap = Object.fromEntries((wallets.data ?? []).map((w: { user_id: string } & UserWallet) => [w.user_id, w]));
     const roleMap = Object.fromEntries((roles.data ?? []).map((r: { user_id: string; role: string }) => [r.user_id, r.role]));
-
-    setUsers(profiles.map((p: Profile) => ({
-      ...p,
-      wallet: walletMap[p.id] ?? null,
-      role: roleMap[p.id] ?? "user",
-    })));
+    setUsers(profiles.map((p: Profile) => ({ ...p, wallet: walletMap[p.id] ?? null, role: roleMap[p.id] ?? "user" })));
     setLoading(false);
   };
 
@@ -170,13 +153,9 @@ function UsersTab({ adminUser }: { adminUser: import("@supabase/supabase-js").Us
     if (!amount || amount <= 0) return toast.error("Enter a valid amount");
     if (!creditDesc.trim()) return toast.error("Description is required");
 
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
-    if (!token) return toast.error("Session expired — please re-login");
-
     setCrediting(true);
     try {
-      await adminCreditWalletFn({ data: { targetUserId: creditTarget.id, amount, description: creditDesc.trim(), adminToken: token } });
+      await adminCreditWalletFn({ targetUserId: creditTarget.id, amount, description: creditDesc.trim() });
       toast.success(`₦${amount.toLocaleString()} credited to ${creditTarget.display_name ?? creditTarget.email}`);
       setCreditTarget(null);
       setCreditAmount("");
@@ -235,7 +214,6 @@ function UsersTab({ adminUser }: { adminUser: import("@supabase/supabase-js").Us
         </div>
       )}
 
-      {/* Credit Dialog */}
       <Dialog open={!!creditTarget} onOpenChange={(o) => !o && setCreditTarget(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Credit Wallet — {creditTarget?.display_name ?? creditTarget?.email}</DialogTitle></DialogHeader>
@@ -261,7 +239,6 @@ function UsersTab({ adminUser }: { adminUser: import("@supabase/supabase-js").Us
   );
 }
 
-// ─── Products Tab ─────────────────────────────────────────────────────────────
 const emptyProduct = { id: "", title: "", slug: "", price: 0, stock: 0, published: false, description: "", image_url: "", category_id: "", currency: "NGN", created_at: "" };
 
 function ProductsTab() {
@@ -279,10 +256,7 @@ function ProductsTab() {
 
   const fetchCredCounts = async (productIds: string[]) => {
     if (!productIds.length) return;
-    const { data } = await supabase
-      .from("product_credentials")
-      .select("product_id, order_id")
-      .in("product_id", productIds);
+    const { data } = await supabase.from("product_credentials").select("product_id, order_id").in("product_id", productIds);
     const counts: Record<string, { available: number; total: number }> = {};
     ((data ?? []) as Array<{ product_id: string; order_id: string | null }>).forEach((row) => {
       if (!counts[row.product_id]) counts[row.product_id] = { available: 0, total: 0 };
@@ -307,12 +281,7 @@ function ProductsTab() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const openCreate = () => {
-    setEditing(null);
-    setForm({ ...emptyProduct });
-    setDialogOpen(true);
-  };
-
+  const openCreate = () => { setEditing(null); setForm({ ...emptyProduct }); setDialogOpen(true); };
   const openEdit = (p: Product) => {
     setEditing(p);
     setForm({ title: p.title, slug: p.slug, price: p.price, stock: p.stock, published: p.published, description: p.description ?? "", image_url: p.image_url ?? "", category_id: p.category_id ?? "", currency: p.currency });
@@ -326,12 +295,15 @@ function ProductsTab() {
     if (!form.price || form.price < 0) return toast.error("Price must be ≥ 0");
     setSaving(true);
 
+    const isValidUUID = (val: string | null | undefined) =>
+      !!val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
     const payload = {
       ...form,
       slug: form.slug || slugify(form.title),
       price: Number(form.price),
       stock: Number(form.stock),
-      category_id: form.category_id || null,
+      category_id: isValidUUID(form.category_id) ? form.category_id : null,
       description: form.description || null,
       image_url: form.image_url || null,
       updated_at: new Date().toISOString(),
@@ -388,28 +360,20 @@ function ProductsTab() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">{cat?.name ?? "—"}</td>
                     <td className="px-4 py-3 font-medium text-brand-navy">₦{Number(p.price).toLocaleString()}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-sm font-medium ${p.stock === 0 ? "text-red-500" : "text-brand-navy"}`}>{p.stock}</span>
-                    </td>
+                    <td className="px-4 py-3"><span className={`text-sm font-medium ${p.stock === 0 ? "text-red-500" : "text-brand-navy"}`}>{p.stock}</span></td>
                     <td className="px-4 py-3">
                       <button onClick={() => setCredProduct(p)} className="flex items-center gap-1 text-xs font-medium hover:opacity-80 transition-opacity">
                         <Key className="w-3 h-3 text-brand-orange" />
-                        <span className={cc?.available === 0 ? "text-red-500" : "text-green-600"}>
-                          {cc ? `${cc.available}/${cc.total}` : "0/0"}
-                        </span>
+                        <span className={cc?.available === 0 ? "text-red-500" : "text-green-600"}>{cc ? `${cc.available}/${cc.total}` : "0/0"}</span>
                       </button>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge className={p.published ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}>
-                        {p.published ? "Live" : "Draft"}
-                      </Badge>
+                      <Badge className={p.published ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}>{p.published ? "Live" : "Draft"}</Badge>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Edit product" onClick={() => openEdit(p)}><Pencil className="w-3.5 h-3.5" /></Button>
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-brand-orange" title="Manage credentials" onClick={() => setCredProduct(p)}>
-                          <Key className="w-3.5 h-3.5" />
-                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-brand-orange" title="Manage credentials" onClick={() => setCredProduct(p)}><Key className="w-3.5 h-3.5" /></Button>
                         <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-green-600" title={p.published ? "Unpublish" : "Publish"}
                           onClick={async () => { await supabase.from("products").update({ published: !p.published, updated_at: new Date().toISOString() }).eq("id", p.id); fetchData(); }}>
                           {p.published ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -426,7 +390,6 @@ function ProductsTab() {
         </div>
       )}
 
-      {/* Create / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing ? "Edit Product" : "Add New Product"}</DialogTitle></DialogHeader>
@@ -450,7 +413,7 @@ function ProductsTab() {
               </div>
               <div className="col-span-2">
                 <Label>Category</Label>
-                <Select value={form.category_id ?? undefined} onValueChange={(v) => setForm({ ...form, category_id: v })}>
+                <Select value={form.category_id || undefined} onValueChange={(v) => setForm({ ...form, category_id: v })}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -480,7 +443,6 @@ function ProductsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation */}
       <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Delete Product?</DialogTitle></DialogHeader>
@@ -494,18 +456,13 @@ function ProductsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Credentials manager */}
       {credProduct && (
-        <CredentialsDialog
-          product={credProduct}
-          onClose={() => { setCredProduct(null); fetchCredCounts(products.map((x) => x.id)); }}
-        />
+        <CredentialsDialog product={credProduct} onClose={() => { setCredProduct(null); fetchCredCounts(products.map((x) => x.id)); }} />
       )}
     </div>
   );
 }
 
-// ─── Orders Tab ───────────────────────────────────────────────────────────────
 const ORDER_STATUS = ["pending", "completed", "failed", "refunded"];
 const STATUS_COLORS: Record<string, string> = {
   completed: "bg-green-100 text-green-700", pending: "bg-yellow-100 text-yellow-700",
@@ -521,7 +478,6 @@ function OrdersTab() {
     setLoading(true);
     const { data: o } = await supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(100);
     setOrders((o as Order[]) ?? []);
-
     if (o?.length) {
       const ids = [...new Set(o.map((x: Order) => x.user_id))];
       const { data: p } = await supabase.from("profiles").select("id, email, display_name").in("id", ids);
@@ -574,7 +530,6 @@ function OrdersTab() {
   );
 }
 
-// ─── Payments Tab ─────────────────────────────────────────────────────────────
 function PaymentsTab() {
   const [txs, setTxs] = useState<Tx[]>([]);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
@@ -608,9 +563,7 @@ function PaymentsTab() {
               {txs.map((t) => (
                 <tr key={t.id} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 text-sm">{profiles[t.user_id] ?? t.user_id.slice(-8)}</td>
-                  <td className="px-4 py-3">
-                    <Badge className={t.type === "credit" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-500"}>{t.type}</Badge>
-                  </td>
+                  <td className="px-4 py-3"><Badge className={t.type === "credit" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-500"}>{t.type}</Badge></td>
                   <td className="px-4 py-3 font-medium text-brand-navy">₦{Number(t.amount).toLocaleString()}</td>
                   <td className="px-4 py-3 text-xs capitalize text-muted-foreground">{t.provider ?? "—"}</td>
                   <td className="px-4 py-3">
@@ -631,18 +584,17 @@ function PaymentsTab() {
   );
 }
 
-// ─── Analytics Tab ────────────────────────────────────────────────────────────
 function AnalyticsTab({ stats }: { stats: Stats }) {
   return (
     <div className="max-w-2xl">
       <h2 className="font-semibold text-brand-navy mb-6">Platform Analytics</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {[
-          { label: "Registered Users", value: stats.users, desc: "Total accounts created", color: "text-blue-500", bg: "bg-blue-50" },
-          { label: "Total Revenue (₦)", value: `₦${stats.revenue.toLocaleString()}`, desc: "Sum of all credited wallets", color: "text-green-500", bg: "bg-green-50" },
-          { label: "Orders Placed", value: stats.orders, desc: "All time purchase orders", color: "text-purple-500", bg: "bg-purple-50" },
-          { label: "Live Products", value: stats.products, desc: "Published & available", color: "text-brand-orange", bg: "bg-brand-orange/10" },
-        ].map(({ label, value, desc, color, bg }) => (
+          { label: "Registered Users", value: stats.users, desc: "Total accounts created", color: "text-blue-500" },
+          { label: "Total Revenue (₦)", value: `₦${stats.revenue.toLocaleString()}`, desc: "Sum of all credited wallets", color: "text-green-500" },
+          { label: "Orders Placed", value: stats.orders, desc: "All time purchase orders", color: "text-purple-500" },
+          { label: "Live Products", value: stats.products, desc: "Published & available", color: "text-brand-orange" },
+        ].map(({ label, value, desc, color }) => (
           <Card key={label}>
             <CardContent className="p-5">
               <div className={`text-3xl font-bold ${color} mb-1`}>{value}</div>
@@ -656,7 +608,6 @@ function AnalyticsTab({ stats }: { stats: Stats }) {
   );
 }
 
-// ─── Settings Tab ─────────────────────────────────────────────────────────────
 function SettingsTab() {
   const [settings, setSettings] = useState<{ key: string; value: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -681,9 +632,7 @@ function SettingsTab() {
     const { error } = await supabase.from("site_settings").upsert({ key: newKey.trim(), value: parsed as never, updated_at: new Date().toISOString() });
     setSaving(false);
     if (error) { toast.error(error.message); return; }
-    toast.success("Setting saved!");
-    setNewKey(""); setNewVal("");
-    fetchSettings();
+    toast.success("Setting saved!"); setNewKey(""); setNewVal(""); fetchSettings();
   };
 
   const deleteSetting = async (key: string) => {
@@ -695,26 +644,18 @@ function SettingsTab() {
   return (
     <div className="max-w-2xl">
       <h2 className="font-semibold text-brand-navy mb-4">Site Settings</h2>
-
       <Card className="mb-6">
         <CardHeader><CardTitle className="text-base text-brand-navy">Add / Update Setting</CardTitle></CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-3 mb-3">
-            <div>
-              <Label>Key</Label>
-              <Input value={newKey} onChange={(e) => setNewKey(e.target.value)} className="mt-1" placeholder="e.g. maintenance_mode" />
-            </div>
-            <div>
-              <Label>Value (JSON or text)</Label>
-              <Input value={newVal} onChange={(e) => setNewVal(e.target.value)} className="mt-1" placeholder='e.g. true or "welcome"' />
-            </div>
+            <div><Label>Key</Label><Input value={newKey} onChange={(e) => setNewKey(e.target.value)} className="mt-1" placeholder="e.g. maintenance_mode" /></div>
+            <div><Label>Value (JSON or text)</Label><Input value={newVal} onChange={(e) => setNewVal(e.target.value)} className="mt-1" placeholder='e.g. true or "welcome"' /></div>
           </div>
           <Button onClick={saveSetting} disabled={saving} className="bg-brand-orange hover:bg-brand-orange-hover text-white text-sm">
             {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Save Setting
           </Button>
         </CardContent>
       </Card>
-
       {loading ? <Loader2 className="w-5 h-5 animate-spin text-brand-orange" /> : (
         <div className="space-y-2">
           {settings.length === 0 ? <p className="text-sm text-muted-foreground">No settings configured yet.</p> : settings.map((s) => (
@@ -736,7 +677,6 @@ function SettingsTab() {
   );
 }
 
-// ─── Credentials Dialog ───────────────────────────────────────────────────────
 type Credential = { id: string; content: string; label: string | null; order_id: string | null; delivered_at: string | null; created_at: string };
 
 function CredentialsDialog({ product, onClose }: { product: Product; onClose: () => void }) {
@@ -750,11 +690,7 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
 
   const fetchCreds = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("product_credentials")
-      .select("id, content, label, order_id, delivered_at, created_at")
-      .eq("product_id", product.id)
-      .order("created_at");
+    const { data } = await supabase.from("product_credentials").select("id, content, label, order_id, delivered_at, created_at").eq("product_id", product.id).order("created_at");
     setCreds(((data ?? []) as unknown) as Credential[]);
     setLoading(false);
   };
@@ -769,8 +705,7 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
     if (!lines.length) return toast.error("Enter at least one credential");
     setAdding(true);
     const rows = lines.map((content, i) => ({
-      product_id: product.id,
-      content,
+      product_id: product.id, content,
       label: bulkLabel.trim() ? `${bulkLabel.trim()} #${i + 1}` : null,
     }));
     const { error } = await supabase.from("product_credentials").insert(rows);
@@ -798,11 +733,9 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Key className="w-4 h-4 text-brand-orange" />
-            Credentials — {product.title}
+            <Key className="w-4 h-4 text-brand-orange" />Credentials — {product.title}
           </DialogTitle>
         </DialogHeader>
-
         <div className="py-2 space-y-5">
           <div className="grid grid-cols-3 gap-3 text-center">
             {[
@@ -816,22 +749,15 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
               </div>
             ))}
           </div>
-
           <div className="border border-border rounded-xl p-4 space-y-3">
             <div className="font-medium text-sm text-brand-navy">Add Credentials</div>
             <div>
-              <Label className="text-xs">Label (optional, applied to each entry)</Label>
+              <Label className="text-xs">Label (optional)</Label>
               <Input value={bulkLabel} onChange={(e) => setBulkLabel(e.target.value)} className="mt-1 text-sm" placeholder='e.g. "Facebook Aged Account"' />
             </div>
             <div>
               <Label className="text-xs">Credentials — one per line</Label>
-              <textarea
-                value={bulkText}
-                onChange={(e) => setBulkText(e.target.value)}
-                rows={5}
-                className="mt-1 w-full rounded-md border border-input px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
-                placeholder={"username:password\nusername2:password2\nhttps://account-link.com"}
-              />
+              <textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)} rows={5} className="mt-1 w-full rounded-md border border-input px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-brand-orange/30" placeholder={"username:password\nusername2:password2"} />
               <p className="text-xs text-muted-foreground mt-1">Each non-empty line becomes one credential slot.</p>
             </div>
             <Button onClick={handleBulkAdd} disabled={adding || !bulkText.trim()} className="w-full bg-brand-orange hover:bg-brand-orange-hover text-white">
@@ -839,7 +765,6 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
               Add {bulkText.split("\n").filter((l) => l.trim()).length || 0} Credential(s)
             </Button>
           </div>
-
           <div>
             <div className="flex border-b border-border mb-3">
               {(["available", "delivered"] as const).map((t) => (
@@ -849,7 +774,6 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
                 </button>
               ))}
             </div>
-
             {loading ? (
               <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-brand-orange" /></div>
             ) : (
@@ -863,9 +787,7 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
                     <div className="flex-1 min-w-0">
                       {c.label && <div className="text-xs font-medium text-brand-navy mb-1">{c.label}</div>}
                       <pre className="text-xs font-mono break-all whitespace-pre-wrap leading-relaxed text-muted-foreground line-clamp-3">{c.content}</pre>
-                      {c.delivered_at && (
-                        <div className="text-xs text-blue-500 mt-1">Delivered {new Date(c.delivered_at).toLocaleDateString("en-NG")}</div>
-                      )}
+                      {c.delivered_at && <div className="text-xs text-blue-500 mt-1">Delivered {new Date(c.delivered_at).toLocaleDateString("en-NG")}</div>}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground" onClick={() => handleCopy(c.content, c.id)}>
@@ -883,10 +805,7 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
             )}
           </div>
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Close</Button>
-        </DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );

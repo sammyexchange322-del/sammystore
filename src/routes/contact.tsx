@@ -1,4 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Mail, Phone, MapPin, Send, CheckCircle2 } from "lucide-react";
@@ -9,25 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { contactInfo } from "@/data/site";
 
-export const Route = createFileRoute("/contact")({
-  head: () => ({
-    meta: [
-      { title: "Contact — Sammy Store Logs" },
-      {
-        name: "description",
-        content: "Get in touch with the Sammy Store Logs team for support, questions or custom requests.",
-      },
-      { property: "og:title", content: "Contact Sammy Store Logs" },
-      {
-        property: "og:description",
-        content: "Talk to our team about verified social media accounts.",
-      },
-    ],
-  }),
-  component: ContactPage,
-});
-
-function ContactPage() {
+export default function ContactPage() {
   const [formData, setFormData] = useState({ name: "", email: "", subject: "", message: "" });
   const [submitted, setSubmitted] = useState(false);
 
@@ -121,10 +102,7 @@ function ContactPage() {
                   />
                 </div>
 
-                <Button
-                  type="submit"
-                  className="w-full bg-brand-orange hover:bg-brand-orange-hover text-white h-12 font-semibold"
-                >
+                <Button type="submit" className="w-full bg-brand-orange hover:bg-brand-orange-hover text-white h-12 font-semibold">
                   <Send className="w-4 h-4 mr-2" />
                   Send Message
                 </Button>
