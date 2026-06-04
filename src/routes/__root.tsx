@@ -10,7 +10,6 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { FloatingActions } from "@/components/layout/FloatingActions";
@@ -43,7 +42,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    console.error("[ErrorBoundary]", error);
   }, [error]);
 
   return (
@@ -95,12 +94,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: "Sammy Store Logs — Buy Verified Social Media Accounts" },
-      { name: "description", content: "Project Revival analyzes ZIP files to recreate, preserve, and deploy projects with improved UI and bug fixes." },
-      { property: "og:description", content: "Project Revival analyzes ZIP files to recreate, preserve, and deploy projects with improved UI and bug fixes." },
-      { name: "twitter:description", content: "Project Revival analyzes ZIP files to recreate, preserve, and deploy projects with improved UI and bug fixes." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/f3881ca1-88ef-4bd4-87e9-b4666dcace2b/id-preview-fc84ba59--6b0dc528-2b7d-4de3-9bce-88633a1c9e4b.lovable.app-1780313543777.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/f3881ca1-88ef-4bd4-87e9-b4666dcace2b/id-preview-fc84ba59--6b0dc528-2b7d-4de3-9bce-88633a1c9e4b.lovable.app-1780313543777.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
