@@ -364,6 +364,16 @@ export default function ProductsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {user && (
+        <PaystackTopUpDialog
+          open={topUpOpen}
+          onOpenChange={setTopUpOpen}
+          user={user}
+          defaultAmount={topUpAmount}
+          onFunded={(newBalance) => { if (newBalance !== null) setWalletBalance(newBalance); }}
+        />
+      )}
     </>
   );
 }
