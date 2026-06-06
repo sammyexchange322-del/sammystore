@@ -37,6 +37,12 @@ type Order = {
   items: OrderItem[];
 };
 
+const CRED_FIELDS = ["Username", "Password", "Email", "Email Password", "2FA Code"];
+function parseCredential(content: string) {
+  const parts = content.split("/");
+  return CRED_FIELDS.map((label, i) => ({ label, value: parts[i]?.trim() ?? "" })).filter((f) => f.value);
+}
+
 const STATUS_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   completed: { label: "Completed",  color: "bg-green-100 text-green-700",  icon: <CheckCircle className="w-3.5 h-3.5" /> },
   pending:   { label: "Pending",    color: "bg-yellow-100 text-yellow-700", icon: <Clock className="w-3.5 h-3.5" /> },
@@ -276,10 +282,13 @@ export default function OrdersPage() {
                                   )}
                                 </div>
 
-                                <div className="bg-white rounded-lg border border-purple-200 p-3 mb-3 relative">
-                                  <pre className="text-sm font-mono text-brand-navy break-all whitespace-pre-wrap leading-relaxed pr-8">
-                                    {item.credential.content}
-                                  </pre>
+                                <div className="bg-white rounded-lg border border-purple-200 p-3 mb-3 space-y-2">
+                                  {parseCredential(item.credential.content).map(({ label, value }) => (
+                                    <div key={label} className="flex items-start gap-2 text-sm">
+                                      <span className="text-xs font-semibold text-purple-600 w-28 shrink-0 pt-0.5">{label}</span>
+                                      <span className="font-mono text-brand-navy break-all">{value}</span>
+                                    </div>
+                                  ))}
                                 </div>
 
                                 <div className="flex items-center gap-2 flex-wrap">
@@ -294,7 +303,7 @@ export default function OrdersPage() {
                                   >
                                     {copied === item.id
                                       ? <><CheckCheck className="w-3.5 h-3.5" />Copied!</>
-                                      : <><Copy className="w-3.5 h-3.5" />Copy Credentials</>}
+                                      : <><Copy className="w-3.5 h-3.5" />Copy All</>}
                                   </Button>
                                   {item.credential.delivered_at && (
                                     <span className="text-xs text-muted-foreground">

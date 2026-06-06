@@ -3,6 +3,7 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import multer from "multer";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IS_PROD = process.env.NODE_ENV === "production";
@@ -10,6 +11,24 @@ const IS_PROD = process.env.NODE_ENV === "production";
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ─── File upload (multer) ──────────────────────────────────────────────────
+const uploadsDir = path.resolve(__dirname, "../public/uploads");
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const ext = file.originalname.split(".").pop()?.toLowerCase() ?? "jpg";
+    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`);
+  },
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files are allowed"));
+  },
+});
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 // Prefer VITE_SUPABASE_URL (the active project) over the legacy SUPABASE_URL
@@ -97,6 +116,19 @@ function err(res: express.Response, status: number, msg: string) {
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────
+
+// Image upload — no auth required (admin-only UI enforces access control)
+app.post("/api/upload/image", upload.single("file"), (req, res) => {
+  if (!req.file) return err(res, 400, "No file uploaded");
+  const siteUrl =
+    process.env.VITE_SITE_URL ??
+    (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "");
+  const url = siteUrl
+    ? `${siteUrl}/uploads/${req.file.filename}`
+    : `/uploads/${req.file.filename}`;
+  return res.json({ url });
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
@@ -350,6 +382,98 @@ app.post("/api/delivery/assign-credential", async (req, res) => {
   });
 });
 
+// ─── Paystack webhook (automatic — Paystack calls this after payment) ─────────
+// Configure in Paystack Dashboard → Settings → API Keys & Webhooks
+// Webhook URL: https://yourdomain.com/api/payment/paystack-webhook
+app.post("/api/payment/paystack-webhook", async (req, res) => {
+  // Verify HMAC-SHA512 signature
+  const secret = PAYSTACK_SECRET_KEY;
+  if (secret) {
+    const sig = req.headers["x-paystack-signature"] as string | undefined;
+    if (!sig) return err(res, 400, "Missing signature");
+    const crypto = await import("node:crypto");
+    const expected = crypto
+      .createHmac("sha512", secret)
+      .update(JSON.stringify(req.body))
+      .digest("hex");
+    if (sig !== expected) return err(res, 401, "Invalid signature");
+  }
+
+  const event = req.body as {
+    event: string;
+    data?: { reference?: string; amount?: number; status?: string; metadata?: { userId?: string } };
+  };
+
+  if (event.event !== "charge.success") return res.json({ received: true });
+  if (!requireSupabase(res)) return;
+
+  const reference = event.data?.reference;
+  const amountKobo = event.data?.amount ?? 0;
+  const amount = amountKobo / 100;
+  const userId = event.data?.metadata?.userId;
+
+  if (!reference || !userId || amount <= 0) return res.json({ received: true });
+
+  // Check intent exists and is pending
+  const { data: intent } = await supabaseAdmin!
+    .from("payment_intents")
+    .select("id, status, user_id")
+    .eq("reference", reference)
+    .maybeSingle();
+
+  if (!intent) return res.json({ received: true });
+  if ((intent as Record<string, unknown>).status === "success") return res.json({ received: true });
+
+  // Credit the wallet
+  await supabaseAdmin!.rpc(
+    "credit_wallet" as never,
+    { _user_id: userId, _amount: amount, _provider: "paystack", _reference: reference, _description: "Wallet funded via Paystack" } as never
+  );
+
+  await supabaseAdmin!
+    .from("payment_intents")
+    .update({ status: "success", updated_at: new Date().toISOString() })
+    .eq("reference", reference);
+
+  console.log(`[Webhook] Paystack charge.success credited ₦${amount} to user ${userId}`);
+  return res.json({ received: true });
+});
+
+// ─── Admin re-dispense (no age check — admin-initiated) ────────────────────
+app.post("/api/delivery/admin-redispense", async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const user = await getAuthUser(req);
+  if (!user) return err(res, 401, "Unauthorized");
+
+  const { data: roles } = await supabaseAdmin!
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .eq("role", "admin")
+    .limit(1);
+  if (!roles?.length) return err(res, 403, "Forbidden: admin access required");
+
+  const { orderId, productId } = req.body as { orderId?: string; productId?: string };
+  if (!orderId || !productId) return err(res, 400, "orderId and productId are required");
+
+  const { data: credId, error: assignErr } = await supabaseAdmin!.rpc(
+    "assign_credential_to_order" as never,
+    { _order_id: orderId, _product_id: productId } as never
+  );
+
+  if (assignErr) return err(res, 500, (assignErr as { message: string }).message);
+
+  if (!credId) return res.json({ assigned: false, message: "No available credentials for this product" });
+
+  const { data: cred } = await supabaseAdmin!
+    .from("product_credentials")
+    .select("content, label")
+    .eq("id", credId as string)
+    .single();
+
+  return res.json({ assigned: true, content: (cred as Record<string, unknown> | null)?.content ?? null });
+});
+
 app.post("/api/wallet/ensure", async (req, res) => {
   if (!requireSupabase(res)) return;
   const user = await getAuthUser(req);
@@ -373,11 +497,13 @@ app.post("/api/wallet/ensure", async (req, res) => {
   return res.json({ wallet: created });
 });
 
-// ─── Static file serving (production) ─────────────────────────────────────
+// ─── Static file serving ──────────────────────────────────────────────────
+// Always serve /uploads so product images work in dev & prod
+app.use("/uploads", express.static(uploadsDir));
+
 if (IS_PROD) {
   const distPath = path.resolve(__dirname, "../dist");
   app.use(express.static(distPath));
-  // For any non-API route, serve index.html (SPA fallback)
   app.get(/^(?!\/api).*/, (_req, res) => {
     res.sendFile(path.join(distPath, "index.html"));
   });

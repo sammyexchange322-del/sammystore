@@ -18,6 +18,12 @@ type DbCategory = { id: string; name: string; slug: string; description: string 
 type Product = { id: string; title: string; price: number; stock: number; description: string | null; image_url: string | null; slug: string; currency: string };
 type DeliveredCred = { content: string; label: string | null };
 
+const CRED_FIELDS = ["Username", "Password", "Email", "Email Password", "2FA Code"];
+function parseCred(content: string) {
+  const parts = content.split("/");
+  return CRED_FIELDS.map((label, i) => ({ label, value: parts[i]?.trim() ?? "" })).filter((f) => f.value);
+}
+
 const platformIcons: Record<string, React.ElementType> = {
   "aged-twitter": Twitter, "aged-instagram": Instagram, "random-facebook": Facebook,
   "usa-facebook": Facebook, tools: Wrench, "working-profiles": Instagram, "below-50-friend": Facebook, youtube: Youtube,
@@ -331,15 +337,17 @@ export default function ProductsPage() {
                   <CheckCheck className="w-4 h-4 text-green-500" />
                   {deliveredCred.label ?? "Account credentials delivered"}
                 </div>
-                <div className="relative">
-                  <pre className="bg-muted rounded-xl p-4 text-sm font-mono whitespace-pre-wrap break-all leading-relaxed border border-border max-h-48 overflow-y-auto">
-                    {deliveredCred.content}
-                  </pre>
-                  <Button size="sm" variant="ghost" onClick={handleCopy}
-                    className="absolute top-2 right-2 h-7 px-2 text-xs text-muted-foreground hover:text-brand-navy">
-                    {copied ? <><CheckCheck className="w-3.5 h-3.5 mr-1 text-green-500" />Copied!</> : <><Copy className="w-3.5 h-3.5 mr-1" />Copy</>}
-                  </Button>
+                <div className="bg-muted rounded-xl border border-border p-4 space-y-2">
+                  {parseCred(deliveredCred.content).map(({ label, value }) => (
+                    <div key={label} className="flex items-start gap-2 text-sm">
+                      <span className="text-xs font-semibold text-purple-600 w-28 shrink-0 pt-0.5">{label}</span>
+                      <span className="font-mono text-brand-navy break-all">{value}</span>
+                    </div>
+                  ))}
                 </div>
+                <Button size="sm" variant="outline" onClick={handleCopy} className="w-full h-8 text-xs gap-1.5">
+                  {copied ? <><CheckCheck className="w-3.5 h-3.5 text-green-500" />Copied!</> : <><Copy className="w-3.5 h-3.5" />Copy All Credentials</>}
+                </Button>
                 <p className="text-xs text-muted-foreground flex items-start gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-yellow-500" />
                   Save these credentials now. You can also view them later in your Dashboard → Orders.

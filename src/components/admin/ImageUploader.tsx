@@ -1,10 +1,9 @@
 import { useRef, useState } from "react";
 import { Loader2, Upload, X, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 
-const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 
 export function ImageUploader({
@@ -24,27 +23,35 @@ export function ImageUploader({
     if (file.size > MAX_BYTES) return toast.error("Image must be 5MB or smaller");
 
     setUploading(true);
-    setProgress(10);
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-    const path = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+    setProgress(20);
 
-    const { error } = await supabase.storage
-      .from("product-images")
-      .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+    const formData = new FormData();
+    formData.append("file", file);
 
-    if (error) {
+    try {
+      const res = await fetch("/api/upload/image", {
+        method: "POST",
+        body: formData,
+      });
+
+      setProgress(80);
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({ error: "Upload failed" }));
+        toast.error((json as { error?: string }).error ?? "Upload failed");
+        return;
+      }
+
+      const { url } = (await res.json()) as { url: string };
+      setProgress(100);
+      onChange(url);
+      toast.success("Image uploaded");
+    } catch {
+      toast.error("Upload failed — please try again");
+    } finally {
       setUploading(false);
       setProgress(0);
-      toast.error(`Upload failed: ${error.message}`);
-      return;
     }
-    setProgress(80);
-
-    const { data } = supabase.storage.from("product-images").getPublicUrl(path);
-    setProgress(100);
-    setUploading(false);
-    onChange(data.publicUrl);
-    toast.success("Image uploaded");
   };
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -459,6 +459,7 @@ function SoldTab() {
   const [profiles, setProfiles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [redispensing, setRedispensing] = useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -503,6 +504,26 @@ function SoldTab() {
 
   useEffect(() => { fetchData(); }, []);
 
+  const handleRedispense = async (item: SoldItem) => {
+    if (!item.product_id) return toast.error("No product ID for this item");
+    setRedispensing(item.id);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token ?? "";
+      const res = await fetch("/api/delivery/admin-redispense", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ orderId: item.order_id, productId: item.product_id }),
+      });
+      const json = await res.json() as { assigned: boolean; message?: string };
+      if (!res.ok) { toast.error((json as { error?: string }).error ?? "Re-dispense failed"); return; }
+      if (!json.assigned) { toast.error(json.message ?? "No available credentials — add more in the Credentials panel"); return; }
+      toast.success("Credential re-dispensed successfully!");
+      fetchData();
+    } catch { toast.error("Network error — try again"); }
+    finally { setRedispensing(null); }
+  };
+
   const filtered = items.filter((i) =>
     i.title.toLowerCase().includes(search.toLowerCase()) ||
     (profiles[i.order_user_id] ?? "").toLowerCase().includes(search.toLowerCase())
@@ -522,7 +543,7 @@ function SoldTab() {
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
-              <tr>{["Product", "Buyer", "Unit Price", "Qty", "Credential", "Date"].map((h) => (
+              <tr>{["Product", "Buyer", "Unit Price", "Qty", "Credential", "Date", "Action"].map((h) => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">{h}</th>
               ))}</tr>
             </thead>
@@ -539,6 +560,17 @@ function SoldTab() {
                       : <Badge className="bg-yellow-100 text-yellow-700 text-xs">Pending</Badge>}
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(item.created_at).toLocaleDateString("en-NG")}</td>
+                  <td className="px-4 py-3">
+                    {!item.delivered_payload && (
+                      <Button size="sm" variant="outline" disabled={redispensing === item.id}
+                        className="text-xs h-7 px-2 border-purple-400 text-purple-600 hover:bg-purple-50"
+                        onClick={() => handleRedispense(item)}>
+                        {redispensing === item.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><Key className="w-3 h-3 mr-1" />Re-dispense</>}
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1158,8 +1190,8 @@ function CredentialsDialog({ product, onClose }: { product: Product; onClose: ()
               <Label className="text-xs">Credentials — one per line</Label>
               <textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)} rows={5}
                 className="mt-1 w-full rounded-md border border-input px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
-                placeholder={"username:password\nusername2:password2"} />
-              <p className="text-xs text-muted-foreground mt-1">Each non-empty line becomes one credential slot.</p>
+                placeholder={"username/password/email/emailpassword/2fa\nusername2/password2/email2/emailpass2/2fa2"} />
+              <p className="text-xs text-muted-foreground mt-1">Format: <code className="bg-muted px-1 rounded">username/password/email/emailpassword/2fa</code> — each line = one credential slot.</p>
             </div>
             <Button onClick={handleBulkAdd} disabled={adding || !bulkText.trim()} className="w-full bg-brand-orange hover:bg-brand-orange-hover text-white">
               {adding && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
