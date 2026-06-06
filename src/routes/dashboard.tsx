@@ -66,6 +66,9 @@ export default function DashboardPage() {
                 <Link to="/admin">Admin Panel</Link>
               </Button>
             )}
+            <Button asChild variant="outline" size="sm">
+              <Link to="/orders"><ShoppingBag className="w-4 h-4 mr-1" />My Orders</Link>
+            </Button>
             <Button asChild className="bg-brand-orange hover:bg-brand-orange-hover text-white" size="sm">
               <Link to="/wallet"><Wallet className="w-4 h-4 mr-1" />Wallet</Link>
             </Button>

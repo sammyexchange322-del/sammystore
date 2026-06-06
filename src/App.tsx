@@ -13,6 +13,7 @@ import WalletPage from "@/routes/wallet";
 import ProductsPage from "@/routes/products";
 import AdminPage from "@/routes/admin";
 import ResetPasswordPage from "@/routes/reset-password";
+import OrdersPage from "@/routes/orders";
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/wallet" element={<WalletPage />} />
           <Route path="/products" element={<ProductsPage />} />
+          <Route path="/orders" element={<OrdersPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Routes>
