@@ -12,6 +12,15 @@ function json(body, status = 200) {
   });
 }
 
+async function parseResponseBody(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { text };
+  }
+}
+
 async function ensureBucket(supabaseUrl, serviceKey, bucket) {
   const res = await fetch(`${supabaseUrl}/storage/v1/bucket`, {
     method: "POST",
@@ -26,14 +35,16 @@ async function ensureBucket(supabaseUrl, serviceKey, bucket) {
     return;
   }
 
-  const err = await res.json().catch(() => ({}));
-  throw new Error((err.error || err.message || "Bucket creation failed"));
+  const body = await parseResponseBody(res);
+  const message = body.error || body.message || body.details || JSON.stringify(body);
+  throw new Error(`Bucket creation failed: ${message}`);
 }
 
 export async function onRequestPost({ request, env }) {
-  const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL || "";
-  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_SERVICE_ROLE_KEY || "";
-  const bucket = env.SUPABASE_STORAGE_BUCKET || env.VITE_SUPABASE_STORAGE_BUCKET || DEFAULT_BUCKET;
+  const rawSupabaseUrl = env.SUPABASE_URL || "";
+  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY || "";
+  const bucket = env.SUPABASE_STORAGE_BUCKET || DEFAULT_BUCKET;
+  const supabaseUrl = rawSupabaseUrl.replace(/\/+$/, "");
 
   if (!supabaseUrl || !serviceKey) {
     return json({ error: "Storage not configured on server" }, 503);
@@ -51,30 +62,37 @@ export async function onRequestPost({ request, env }) {
   if (!file.type.startsWith("image/"))    return json({ error: "Only image files are allowed" }, 400);
   if (file.size > 5 * 1024 * 1024)        return json({ error: "Image must be 5 MB or smaller" }, 400);
 
-  const ext      = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
   const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
 
   const bytes = await file.arrayBuffer();
   await ensureBucket(supabaseUrl, serviceKey, bucket);
 
-  const uploadRes = await fetch(
-    `${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${encodeURIComponent(fileName)}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${serviceKey}`,
-        "Content-Type": file.type,
-        "x-upsert": "true",
-      },
-      body: bytes,
-    }
-  );
+  const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucket}/${encodeURIComponent(fileName)}`;
+  const uploadRes = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${serviceKey}`,
+      "Content-Type": file.type,
+      "x-upsert": "true",
+    },
+    body: bytes,
+  });
 
   if (!uploadRes.ok) {
-    const err = await uploadRes.json().catch(() => ({}));
-    return json({ error: err.error || err.message || "Upload failed" }, uploadRes.status);
+    const body = await parseResponseBody(uploadRes);
+    const message = body.error || body.message || body.details || body.text || "Upload failed";
+    return json(
+      {
+        error: `Upload failed: ${message}`,
+        status: uploadRes.status,
+        supabase: body,
+        uploadUrl,
+      },
+      uploadRes.status
+    );
   }
 
-  const publicUrl = `${supabaseUrl}/storage/v1/object/public/${encodeURIComponent(bucket)}/${encodeURIComponent(fileName)}`;
+  const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${encodeURIComponent(fileName)}`;
   return json({ url: publicUrl });
 }
