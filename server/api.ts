@@ -4,18 +4,14 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import multer from "multer";
+import { pool } from "./db";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IS_PROD = process.env.NODE_ENV === "production";
 
 const app = express();
 app.use(cors());
-// Preserve raw body buffer for webhook signature verification while still parsing JSON for routes
-app.use(express.json({
-  verify: (req: any, _res, buf: Buffer) => {
-    (req as any).rawBody = buf;
-  },
-}));
+app.use(express.json());
 
 // ─── File upload (multer) ──────────────────────────────────────────────────
 const uploadsDir = path.resolve(__dirname, "../public/uploads");
@@ -35,7 +31,7 @@ const upload = multer({
   },
 });
 
-// ─── Config ──────────────────────────────────────────────────────────��[...]
+// ─── Config ──────────────────────────────────────────────────────────
 // Prefer VITE_SUPABASE_URL (the active project) over the legacy SUPABASE_URL
 const SUPABASE_URL =
   process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
@@ -43,6 +39,7 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 const PAYSTACK_SECRET_KEY  = process.env.PAYSTACK_SECRET_KEY ?? "";
 const NOWPAYMENTS_API_KEY  = process.env.NOWPAYMENTS_API_KEY ?? "";
 const ADMIN_EMAIL          = process.env.ADMIN_EMAIL ?? "";
+const ADMIN_API_TOKEN      = process.env.ADMIN_API_TOKEN ?? "";
 
 // ─── Supabase admin client ─────────────────────────────────────────────────
 let supabaseAdmin: SupabaseClient | null = null;
@@ -97,7 +94,7 @@ async function seedAdmin() {
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────�[...]
+// ─── Helpers ──────────────────────────────────────────────────────────
 function requireSupabase(res: express.Response): supabaseAdmin is SupabaseClient {
   if (!supabaseAdmin) {
     res.status(503).json({ error: "Service temporarily unavailable — Supabase not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to Replit Secrets." });
@@ -120,7 +117,7 @@ function err(res: express.Response, status: number, msg: string) {
   return res.status(status).json({ error: msg });
 }
 
-// ─── Routes ──────────────────────────────────────────────────────────�[...]
+// ─── Routes ──────────────────────────────────────────────────────────
 
 // Image upload — no auth required (admin-only UI enforces access control)
 app.post("/api/upload/image", upload.single("file"), (req, res) => {
@@ -337,33 +334,141 @@ app.post("/api/payment/admin-credit", async (req, res) => {
   return res.json({ success: true });
 });
 
-app.post("/api/delivery/assign-credential", async (req, res) => {
-  if (!requireSupabase(res)) return;
-  const user = await getAuthUser(req);
-  if (!user) return err(res, 401, "Unauthorized");
+// New endpoint: Verify manual deposit (admin token or admin role)
+app.post("/api/admin/manual-deposits/verify", async (req, res) => {
+  // Two auth options: Admin role (via supabase token) OR admin API token header
+  const adminHeader = req.header("X-Admin-Token");
+  let isAdmin = false;
+  let adminId: string | null = null;
 
-  const { orderId, productId } = req.body as { orderId?: string; productId?: string };
-  if (!orderId || !productId) return err(res, 400, "orderId and productId are required");
-
-  const { data: order } = await supabaseAdmin!
-    .from("orders").select("id, user_id, status").eq("id", orderId).single();
-  if (!order) return err(res, 404, "Order not found");
-  if ((order as Record<string, unknown>).user_id !== user.id) return err(res, 403, "Forbidden");
-
-  // Step 1: Already delivered? Return stored content directly (no credential lookup needed).
-  const { data: existingItem } = await supabaseAdmin!
-    .from("order_items").select("delivered_payload")
-    .eq("order_id", orderId).eq("product_id", productId).limit(1).single();
-  if (existingItem?.delivered_payload) {
-    return res.json({ assigned: true, content: existingItem.delivered_payload, label: null });
+  if (adminHeader && ADMIN_API_TOKEN && adminHeader === ADMIN_API_TOKEN) {
+    isAdmin = true;
+    adminId = "api-token"; // generic identifier if called with token
+  } else {
+    // Check supabase auth token and role
+    if (!requireSupabase(res)) return;
+    const user = await getAuthUser(req);
+    if (!user) return err(res, 401, "Unauthorized");
+    const { data: roles } = await supabaseAdmin!.from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").limit(1);
+    if (roles && roles.length > 0) {
+      isAdmin = true;
+      adminId = user.id;
+    }
   }
 
-  // Step 2: purchase_with_wallet calls assign_credential_to_order which sets order_id on the
-  // credential but does NOT update order_items.delivered_payload. Find that credential here.
-  const { data: assignedCred } = await supabaseAdmin!
-    .from("product_credentials").select("id, content, label")
-    .eq("order_id", orderId).eq("product_id", productId).limit(1).single();
+  if (!isAdmin) return err(res, 403, "Forbidden: admin access required");
 
-  let credId: string | null = null;
-  let credContent: string | null = null;
+  const { reference } = req.body as { reference?: string };
+  if (!reference) return err(res, 400, "reference is required");
 
+  if (!pool) return err(res, 500, "Database not configured");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Lock the payment_intent row
+    const intentRes = await client.query(
+      `SELECT reference, user_id, amount, provider, status
+       FROM payment_intents
+       WHERE reference = $1
+       FOR UPDATE`,
+      [reference]
+    );
+
+    if (intentRes.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return err(res, 404, "payment_intent not found");
+    }
+
+    const intent = intentRes.rows[0] as { reference: string; user_id: string; amount: number; provider: string; status: string };
+
+    if (intent.provider !== "manual") {
+      await client.query("ROLLBACK");
+      return err(res, 400, "intent is not a manual deposit");
+    }
+
+    if (intent.status === "completed" || intent.status === "success") {
+      await client.query("ROLLBACK");
+      return err(res, 409, "payment_intent already completed");
+    }
+
+    if (!["pending", "submitted"].includes(intent.status)) {
+      await client.query("ROLLBACK");
+      return err(res, 400, `cannot verify intent in status: ${intent.status}`);
+    }
+
+    // Lock or create wallet row and update balance
+    const walletRes = await client.query(
+      `SELECT user_id, balance FROM wallets WHERE user_id = $1 FOR UPDATE`,
+      [intent.user_id]
+    );
+
+    let newBalance: number;
+    if (walletRes.rowCount === 0) {
+      await client.query(
+        `INSERT INTO wallets (user_id, balance) VALUES ($1, $2)`,
+        [intent.user_id, intent.amount]
+      );
+      newBalance = Number(intent.amount);
+    } else {
+      const current = Number(walletRes.rows[0].balance ?? 0);
+      newBalance = current + Number(intent.amount);
+      await client.query(
+        `UPDATE wallets SET balance = $1 WHERE user_id = $2`,
+        [newBalance, intent.user_id]
+      );
+    }
+
+    // Insert a wallet_transactions/audit row
+    await client.query(
+      `INSERT INTO wallet_transactions (user_id, amount, type, reference, created_at)
+       VALUES ($1, $2, $3, $4, now())`,
+      [intent.user_id, intent.amount, "manual_topup", intent.reference]
+    );
+
+    // Update payment_intents status -> completed and set audit fields
+    await client.query(
+      `UPDATE payment_intents
+       SET status = 'completed', verified_by = $2, verified_at = now()
+       WHERE reference = $1`,
+      [intent.reference, adminId]
+    );
+
+    await client.query("COMMIT");
+
+    return res.json({ status: "ok", reference: intent.reference, user_id: intent.user_id, amount: intent.amount, newBalance });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error("verifyManualDeposit error:", e);
+    return err(res, 500, "Internal server error");
+  } finally {
+    client.release();
+  }
+});
+
+// ─── Static file serving ──────────────────────────────────────────────────
+app.use("/uploads", express.static(uploadsDir));
+
+if (IS_PROD) {
+  const distPath = path.resolve(__dirname, "../dist");
+  app.use(express.static(distPath));
+  app.get(/^(?!\/api).*/, (_req, res) => {
+    res.sendFile(path.join(distPath, "index.html"));
+  });
+  console.log(`[API] Serving static files from ${distPath}`);
+}
+
+// ─── Start ──────────────────────────────────────────────────────────
+const PORT = parseInt(process.env.PORT ?? process.env.API_PORT ?? (IS_PROD ? "5000" : "3001"), 10);
+app.listen(PORT, "0.0.0.0", async () => {
+  console.log(`[API] Server running on port ${PORT} (${IS_PROD ? "production" : "development"})`);
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) console.warn("[API] ⚠️  Supabase not configured — add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to Replit Secrets");
+  if (!PAYSTACK_SECRET_KEY)  console.warn("[API] ⚠️  PAYSTACK_SECRET_KEY not set");
+  if (!NOWPAYMENTS_API_KEY)  console.warn("[API] ⚠️  NOWPAYMENTS_API_KEY not set");
+  if (ADMIN_EMAIL) {
+    await seedAdmin();
+  } else {
+    console.log("[API] ℹ️  ADMIN_EMAIL not set — skipping admin seed. Add it to Replit Secrets to auto-grant admin.");
+  }
+});
