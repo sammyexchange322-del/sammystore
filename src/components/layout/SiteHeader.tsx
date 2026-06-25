@@ -1,7 +1,7 @@
 
 import { Link, NavLink } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Search, User, UserPlus, LayoutGrid, Menu, LogOut, LayoutDashboard, Wallet, Tag } from "lucide-react";
+import { Search, User, UserPlus, LayoutGrid, Menu, LogOut, LayoutDashboard, Wallet, Tag, Phone } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { navLinks } from "@/data/site";
+import { ForeignNumbersNavItem } from "@/components/foreign-numbers/ForeignNumbersNavItem";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -195,6 +196,19 @@ export function SiteHeader() {
                     </div>
                   )}
                 </div>
+
+                <div className="mt-4">
+                  <ForeignNumbersNavItem />
+                </div>
+
+                <Link
+                  to="/my-numbers"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-2 text-brand-navy hover:text-brand-orange transition-colors font-medium text-lg py-3 border-b border-border mt-2"
+                >
+                  <Phone className="w-4 h-4" />
+                  My Numbers
+                </Link>
               </div>
             </SheetContent>
           </Sheet>

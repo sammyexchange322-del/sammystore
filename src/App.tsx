@@ -17,6 +17,8 @@ import ResetPasswordPage from "@/routes/reset-password";
 import OrdersPage from "@/routes/orders";
 import TermsPage from "@/routes/terms";
 import PrivacyPage from "@/routes/privacy";
+import { ForeignNumbersCountryPage } from "@/pages/ForeignNumbersCountryPage";
+import { MyNumbersPage } from "@/pages/MyNumbersPage";
 
 export default function App() {
   return (
