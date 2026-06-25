@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import Dashboard from './pages/Dashboard';
@@ -14,7 +15,7 @@ import TransactionHistory from './pages/TransactionHistory';
 import ApiTools from './pages/ApiTools';
 import ContactUs from './pages/ContactUs';
 
-type SectionType = 
+type SectionType =
   | 'dashboard'
   | 'accounts'
   | 'numbers'
@@ -28,80 +29,105 @@ type SectionType =
   | 'api'
   | 'contact';
 
+function sectionToPath(s: SectionType) {
+  switch (s) {
+    case 'dashboard':
+      return '/';
+    case 'accounts':
+      return '/accounts';
+    case 'numbers':
+      return '/numbers';
+    case 'allnumbers':
+      return '/allnumbers';
+    case 'pricing':
+      return '/pricing';
+    case 'fund':
+      return '/fund';
+    case 'refer':
+      return '/refer';
+    case 'accounthistory':
+      return '/accounthistory';
+    case 'numbershistory':
+      return '/numbershistory';
+    case 'txhistory':
+      return '/txhistory';
+    case 'api':
+      return '/api';
+    case 'contact':
+      return '/contact';
+    default:
+      return '/';
+  }
+}
+
+function pathToSection(path: string): SectionType {
+  if (path.startsWith('/accounts')) return 'accounts';
+  if (path.startsWith('/numbers')) return 'numbers';
+  if (path.startsWith('/allnumbers')) return 'allnumbers';
+  if (path.startsWith('/pricing')) return 'pricing';
+  if (path.startsWith('/fund')) return 'fund';
+  if (path.startsWith('/refer')) return 'refer';
+  if (path.startsWith('/accounthistory')) return 'accounthistory';
+  if (path.startsWith('/numbershistory')) return 'numbershistory';
+  if (path.startsWith('/txhistory')) return 'txhistory';
+  if (path.startsWith('/api')) return 'api';
+  if (path.startsWith('/contact')) return 'contact';
+  return 'dashboard';
+}
+
 export default function App() {
-  const [currentSection, setCurrentSection] = useState<SectionType>('dashboard');
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [currentSection, setCurrentSection] = useState<SectionType>(() => pathToSection(location.pathname));
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const renderSection = () => {
-    switch (currentSection) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'accounts':
-        return <Accounts />;
-      case 'numbers':
-        return <Numbers />;
-      case 'allnumbers':
-        return <AllNumbers />;
-      case 'pricing':
-        return <Pricing />;
-      case 'fund':
-        return <FundWallet />;
-      case 'refer':
-        return <ReferEarn />;
-      case 'accounthistory':
-        return <AccountHistory />;
-      case 'numbershistory':
-        return <NumbersHistory />;
-      case 'txhistory':
-        return <TransactionHistory />;
-      case 'api':
-        return <ApiTools />;
-      case 'contact':
-        return <ContactUs />;
-      default:
-        return <Dashboard />;
-    }
+  // keep currentSection in sync with URL (so deep links highlight correct section)
+  useEffect(() => {
+    const sec = pathToSection(location.pathname);
+    setCurrentSection(sec);
+  }, [location.pathname]);
+
+  // passed to Sidebar so clicking an item navigates the router
+  const handleSectionChange = (section: SectionType) => {
+    setCurrentSection(section);
+    setSidebarOpen(false);
+    const to = sectionToPath(section);
+    if (location.pathname !== to) navigate(to);
   };
 
   return (
     <div className="flex h-screen bg-[#0a0a0f]">
-      <Sidebar 
-        currentSection={currentSection} 
-        onSectionChange={(section) => {
-          setCurrentSection(section);
-          setSidebarOpen(false);
-        }}
+      <Sidebar
+        currentSection={currentSection}
+        onSectionChange={handleSectionChange}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
       />
-      
+
       <div className="flex-1 flex flex-col overflow-hidden">
-        <TopBar 
-          pageTitle={currentSection.charAt(0).toUpperCase() + currentSection.slice(1)}
-        />
-        
+        <TopBar pageTitle={currentSection.charAt(0).toUpperCase() + currentSection.slice(1)} />
+
         <main className="flex-1 overflow-auto">
           <div className="p-4 lg:p-8">
-            {renderSection()}
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/accounts" element={<Accounts />} />
+              <Route path="/numbers" element={<Numbers />} />
+              <Route path="/allnumbers" element={<AllNumbers />} />
+              <Route path="/pricing" element={<Pricing />} />
+              <Route path="/fund" element={<FundWallet />} />
+              <Route path="/refer" element={<ReferEarn />} />
+              <Route path="/accounthistory" element={<AccountHistory />} />
+              <Route path="/numbershistory" element={<NumbersHistory />} />
+              <Route path="/txhistory" element={<TransactionHistory />} />
+              <Route path="/api" element={<ApiTools />} />
+              <Route path="/contact" element={<ContactUs />} />
+              <Route path="*" element={<Dashboard />} />
+            </Routes>
           </div>
         </main>
       </div>
     </div>
-  );
-}
-          <Route path="/products/:slug" element={<ProductDetailPage />} />
-          <Route path="/orders" element={<OrdersPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="/privacy-policy" element={<PrivacyPage />} />
-          <Route path="/foreign-numbers/:country" element={<ForeignNumbersCountryPage />} />
-          <Route path="/my-numbers" element={<MyNumbersPage />} />
-        </Routes>
-      </main>
-      <SiteFooter />
-      <FloatingActions />
-      <Toaster richColors position="top-right" />
-    </>
   );
 }
