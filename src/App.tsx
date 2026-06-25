@@ -1,39 +1,94 @@
-import { Routes, Route } from "react-router-dom";
-import { Toaster } from "sonner";
-import { SiteHeader } from "@/components/layout/SiteHeader";
-import { SiteFooter } from "@/components/layout/SiteFooter";
-import { FloatingActions } from "@/components/layout/FloatingActions";
-import HomePage from "@/routes/index";
-import AboutPage from "@/routes/about";
-import BlogPage from "@/routes/blog";
-import ContactPage from "@/routes/contact";
-import AuthPage from "@/routes/auth";
-import DashboardPage from "@/routes/dashboard";
-import WalletPage from "@/routes/wallet";
-import ProductsPage from "@/routes/products";
-import ProductDetailPage from "@/routes/product-detail";
-import AdminPage from "@/routes/admin";
-import ResetPasswordPage from "@/routes/reset-password";
-import OrdersPage from "@/routes/orders";
-import TermsPage from "@/routes/terms";
-import PrivacyPage from "@/routes/privacy";
-import { ForeignNumbersCountryPage } from "@/pages/ForeignNumbersCountryPage";
-import { MyNumbersPage } from "@/pages/MyNumbersPage";
+import { useState } from 'react';
+import Sidebar from './components/Sidebar';
+import TopBar from './components/TopBar';
+import Dashboard from './pages/Dashboard';
+import Accounts from './pages/Accounts';
+import Numbers from './pages/Numbers';
+import AllNumbers from './pages/AllNumbers';
+import Pricing from './pages/Pricing';
+import FundWallet from './pages/FundWallet';
+import ReferEarn from './pages/ReferEarn';
+import AccountHistory from './pages/AccountHistory';
+import NumbersHistory from './pages/NumbersHistory';
+import TransactionHistory from './pages/TransactionHistory';
+import ApiTools from './pages/ApiTools';
+import ContactUs from './pages/ContactUs';
+
+type SectionType = 
+  | 'dashboard'
+  | 'accounts'
+  | 'numbers'
+  | 'allnumbers'
+  | 'pricing'
+  | 'fund'
+  | 'refer'
+  | 'accounthistory'
+  | 'numbershistory'
+  | 'txhistory'
+  | 'api'
+  | 'contact';
 
 export default function App() {
+  const [currentSection, setCurrentSection] = useState<SectionType>('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const renderSection = () => {
+    switch (currentSection) {
+      case 'dashboard':
+        return <Dashboard />;
+      case 'accounts':
+        return <Accounts />;
+      case 'numbers':
+        return <Numbers />;
+      case 'allnumbers':
+        return <AllNumbers />;
+      case 'pricing':
+        return <Pricing />;
+      case 'fund':
+        return <FundWallet />;
+      case 'refer':
+        return <ReferEarn />;
+      case 'accounthistory':
+        return <AccountHistory />;
+      case 'numbershistory':
+        return <NumbersHistory />;
+      case 'txhistory':
+        return <TransactionHistory />;
+      case 'api':
+        return <ApiTools />;
+      case 'contact':
+        return <ContactUs />;
+      default:
+        return <Dashboard />;
+    }
+  };
+
   return (
-    <>
-      <SiteHeader />
-      <main>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/about" element={<AboutPage />} />
-          <Route path="/blog" element={<BlogPage />} />
-          <Route path="/contact" element={<ContactPage />} />
-          <Route path="/auth" element={<AuthPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/wallet" element={<WalletPage />} />
-          <Route path="/products" element={<ProductsPage />} />
+    <div className="flex h-screen bg-[#0a0a0f]">
+      <Sidebar 
+        currentSection={currentSection} 
+        onSectionChange={(section) => {
+          setCurrentSection(section);
+          setSidebarOpen(false);
+        }}
+        isOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
+      />
+      
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <TopBar 
+          pageTitle={currentSection.charAt(0).toUpperCase() + currentSection.slice(1)}
+        />
+        
+        <main className="flex-1 overflow-auto">
+          <div className="p-4 lg:p-8">
+            {renderSection()}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
           <Route path="/products/:slug" element={<ProductDetailPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/admin" element={<AdminPage />} />
